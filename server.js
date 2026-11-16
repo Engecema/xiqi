@@ -327,7 +327,7 @@ function issueUserSessionCookie(res, req, token) {
     `xiqi_session=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    isHttps ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`
   ];
   if (isHttps) attrs.push('Secure');
@@ -336,7 +336,7 @@ function issueUserSessionCookie(res, req, token) {
 
 function clearUserSessionCookie(res, req) {
   const isHttps = req.secure || String(req.headers['x-forwarded-proto'] || '').includes('https');
-  const attrs = ['xiqi_session=', 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+  const attrs = ['xiqi_session=', 'Path=/', 'HttpOnly', isHttps ? 'SameSite=None' : 'SameSite=Lax', 'Max-Age=0'];
   if (isHttps) attrs.push('Secure');
   res.setHeader('Set-Cookie', attrs.join('; '));
 }
@@ -453,17 +453,28 @@ app.get('/api/store', (req, res) => {
   const authUserId = getAuthenticatedUserId(req);
   const users = Array.isArray(d.users) ? d.users : [];
   const activeUser = authUserId ? users.find(u => u.id === authUserId) : null;
+  const guestSess = d.guestSession || createDefaultGuestSession();
+  const activeSess = activeUser ? (activeUser.session || createDefaultGuestSession()) : null;
 
   res.json({
     activeUserId: activeUser ? activeUser.id : null,
+    activeUser: activeUser
+      ? {
+          id: activeUser.id,
+          name: activeUser.name,
+          identifier: activeUser.identifier,
+          color: activeUser.color || '#2563eb'
+        }
+      : null,
     users: users.map(u => ({
       id: u.id,
       name: u.name,
       identifier: u.identifier,
       color: u.color || '#2563eb'
     })),
-    activeSession: activeUser ? activeUser.session || createDefaultGuestSession() : null,
-    guestSession: d.guestSession || createDefaultGuestSession()
+    session: activeSess || guestSess,
+    activeSession: activeSess,
+    guestSession: guestSess
   });
 });
 
@@ -486,10 +497,15 @@ app.post('/api/store', (req, res) => {
       user.session = sanitizeSessionPayload(inc.session);
       if (typeof inc.session.notes !== 'string') user.session.notes = prevNotes;
     }
-  } else if (inc.guestSession && typeof inc.guestSession === 'object') {
-    const prevNotes = cur.guestSession && typeof cur.guestSession.notes === 'string' ? cur.guestSession.notes : '';
-    cur.guestSession = sanitizeSessionPayload(inc.guestSession);
-    if (typeof inc.guestSession.notes !== 'string') cur.guestSession.notes = prevNotes;
+  } else {
+    const incomingGuest = inc.guestSession && typeof inc.guestSession === 'object'
+      ? inc.guestSession
+      : (inc.session && typeof inc.session === 'object' ? inc.session : null);
+    if (incomingGuest) {
+      const prevNotes = cur.guestSession && typeof cur.guestSession.notes === 'string' ? cur.guestSession.notes : '';
+      cur.guestSession = sanitizeSessionPayload(incomingGuest);
+      if (typeof incomingGuest.notes !== 'string') cur.guestSession.notes = prevNotes;
+    }
   }
 
   writeJson(PROFILES_PATH, cur);
@@ -558,6 +574,9 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
   res.json({
     ok: true,
     token,
+    activeUser: { id: newUser.id, name: newUser.name, identifier: newUser.identifier, color: newUser.color },
+    users: cur.users.map(u => ({ id: u.id, name: u.name, identifier: u.identifier, color: u.color || '#2563eb' })),
+    session: newUser.session,
     user: { id: newUser.id, name: newUser.name, identifier: newUser.identifier, color: newUser.color, session: newUser.session }
   });
 });
@@ -568,15 +587,18 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
     return res.status(429).json({ error: 'Muitas tentativas inválidas. Bloqueado por 10 minutos.' });
   }
   const body = stripProtoPollution(req.body || {});
+  const userIdParam = String(body.userId || '').trim();
   const identifier = String(body.identifier || '').trim();
   const pin = String(body.pin || '');
-  if (!identifier || !pin) {
+  if ((!identifier && !userIdParam) || !pin) {
     return res.status(400).json({ error: 'Informe identificador e senha/PIN.' });
   }
 
   const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
   const users = Array.isArray(cur.users) ? cur.users : [];
-  const user = users.find(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase());
+  const user = userIdParam
+    ? users.find(u => u.id === userIdParam)
+    : users.find(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase());
 
   if (!user || !verifyUserPin(user, pin)) {
     markFail(ip);
@@ -597,16 +619,25 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
   const token = crypto.randomBytes(32).toString('hex');
   activeUserTokens.set(token, { userId: user.id, exp: Date.now() + SESSION_TTL_MS });
   issueUserSessionCookie(res, req, token);
+  const userSession = user.session || createDefaultGuestSession();
 
   res.json({
     ok: true,
     token,
+    activeUser: {
+      id: user.id,
+      name: user.name,
+      identifier: user.identifier,
+      color: user.color || '#2563eb'
+    },
+    users: users.map(u => ({ id: u.id, name: u.name, identifier: u.identifier, color: u.color || '#2563eb' })),
+    session: userSession,
     user: {
       id: user.id,
       name: user.name,
       identifier: user.identifier,
       color: user.color || '#2563eb',
-      session: user.session || createDefaultGuestSession()
+      session: userSession
     }
   });
 });
@@ -616,7 +647,13 @@ app.post('/api/auth/logout', (req, res) => {
   const token = String(req.headers['x-user-token'] || cookies.xiqi_session || '').trim();
   if (token) activeUserTokens.delete(token);
   clearUserSessionCookie(res, req);
-  res.json({ ok: true });
+  const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
+  const users = Array.isArray(cur.users) ? cur.users : [];
+  res.json({
+    ok: true,
+    users: users.map(u => ({ id: u.id, name: u.name, identifier: u.identifier, color: u.color || '#2563eb' })),
+    session: cur.guestSession || createDefaultGuestSession()
+  });
 });
 
 /* =====================================================================
