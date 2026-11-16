@@ -1,0 +1,8 @@
+{
+  "name": "XIQI OS - Engecema",
+  "description": "Sistema Operacional corporativo ultraleve XIQI OS - Engecema",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

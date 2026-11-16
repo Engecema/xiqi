@@ -1,0 +1,2017 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XIQI OS</title>
+  <meta name="description" content="Sistema Operacional corporativo ultraleve XIQI OS - Corporação Engecema">
+  <meta property="og:title" content="XIQI OS">
+  <meta property="og:description" content="Sistema Operacional corporativo ultraleve XIQI OS - Corporação Engecema">
+  <style>
+    :root {
+      --bg-page: #ffffff;
+      --bg-soft: #f8fafc;
+      --bg-hover: #f1f5f9;
+      --border-light: #e2e8f0;
+      --border-medium: #cbd5e1;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-subtle: #64748b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eff6ff;
+      --accent-border: #bfdbfe;
+      --danger: #dc2626;
+      --shadow-search: 0 2px 10px rgba(0, 0, 0, 0.08);
+      --shadow-search-hover: 0 4px 16px rgba(0, 0, 0, 0.11);
+      --shadow-popover: 0 10px 28px rgba(15, 23, 42, 0.12);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* =====================================================================
+       TOPO DIREITO: ATALHOS DISCRETOS + ABA DE LOGIN E CADASTRO
+       ===================================================================== */
+    .minimal-header {
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 16px;
+      position: relative;
+      z-index: 50;
+    }
+
+    .header-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-link {
+      background: none;
+      border: none;
+      padding: 4px 2px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 140ms ease;
+    }
+
+    .header-link:hover {
+      color: var(--text-main);
+      text-decoration: underline;
+    }
+
+    .auth-header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+
+    .btn-header-login {
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      min-height: 34px;
+      white-space: nowrap;
+      transition: background-color 140ms ease, border-color 140ms ease;
+    }
+
+    .btn-header-login:hover {
+      background-color: var(--bg-soft);
+      border-color: var(--border-medium);
+    }
+
+    .btn-header-register {
+      background-color: var(--accent);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #ffffff;
+      cursor: pointer;
+      min-height: 34px;
+      white-space: nowrap;
+      transition: background-color 140ms ease;
+    }
+
+    .btn-header-register:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .header-user-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 10px 3px 4px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 9999px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      min-height: 34px;
+      white-space: nowrap;
+    }
+
+    .header-user-pill:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-medium);
+    }
+
+    .auth-btn-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .avatar-circle {
+      width: 26px;
+      height: 26px;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+
+    .avatar-circle-sm {
+      width: 20px;
+      height: 20px;
+      font-size: 10px;
+    }
+
+    .auth-popover {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      width: 340px;
+      max-width: calc(100vw - 28px);
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: var(--shadow-popover);
+      z-index: 80;
+    }
+
+    .auth-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 16px;
+    }
+
+    .auth-tab-btn {
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color 140ms ease, color 140ms ease;
+    }
+
+    .auth-tab-btn.active {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .saved-accounts-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .saved-account-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px 4px 4px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 9999px;
+      font-family: inherit;
+      font-size: 12px;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    .saved-account-chip:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-medium);
+    }
+
+    .saved-account-chip.selected {
+      border-color: var(--accent);
+      background-color: var(--accent-soft);
+    }
+
+    .auth-empty-hint {
+      font-size: 12px;
+      color: var(--text-subtle);
+      margin-bottom: 12px;
+    }
+
+    /* =====================================================================
+       CENTRO MINIMALISTA ESTILO GOOGLE CHROME + MODO IA
+       ===================================================================== */
+    .chrome-center {
+      flex: 1 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px 48px;
+      width: 100%;
+    }
+
+    .xiqi-wordmark {
+      margin: 0 0 28px;
+      font-size: clamp(3.2rem, 7vw, 4.75rem);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-main);
+      user-select: none;
+      line-height: 1;
+    }
+
+    .search-box-wrap {
+      width: 100%;
+      max-width: 620px;
+    }
+
+    .search-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-light);
+      border-radius: 9999px;
+      padding: 6px 8px 6px 18px;
+      min-height: 50px;
+      box-shadow: var(--shadow-search);
+      transition: box-shadow 150ms ease, border-color 150ms ease;
+    }
+
+    .search-pill:hover,
+    .search-pill:focus-within {
+      box-shadow: var(--shadow-search-hover);
+      border-color: var(--border-medium);
+    }
+
+    .search-pill.ai-active {
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.14);
+    }
+
+    .search-icon {
+      width: 18px;
+      height: 18px;
+      color: var(--text-subtle);
+      flex-shrink: 0;
+    }
+
+    .search-input:focus, .search-input:focus-visible { outline: none !important; box-shadow: none !important; border: none !important; }
+    .search-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 15px;
+      outline: none;
+      padding: 6px 0;
+    }
+
+    .ai-mode-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 9999px;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      min-height: 36px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+    }
+
+    .ai-mode-toggle:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-main);
+    }
+
+    .ai-mode-toggle.active {
+      background-color: var(--accent-soft);
+      border-color: var(--accent-border);
+      color: var(--accent);
+    }
+
+    .center-actions {
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .chrome-btn {
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 9px 18px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      min-height: 38px;
+      white-space: nowrap;
+      transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+    }
+
+    .chrome-btn:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-medium);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    .chrome-btn-ai {
+      background-color: var(--accent);
+      border-color: transparent;
+      color: #ffffff;
+    }
+
+    .chrome-btn-ai:hover {
+      background-color: var(--accent-hover);
+      border-color: transparent;
+    }
+
+    /* Painel de Resposta do Modo IA */
+    .ai-response-panel {
+      width: 100%;
+      max-width: 620px;
+      margin-top: 24px;
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      box-shadow: var(--shadow-search);
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .ai-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      background-color: var(--bg-soft);
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .ai-panel-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .ai-panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ai-thread {
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .ai-msg {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ai-msg-role {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-subtle);
+    }
+
+    .ai-msg-role.model {
+      color: var(--accent);
+    }
+
+    .ai-msg-bubble {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-main);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .ai-msg-bubble.user {
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+
+    .ai-status-line {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .ai-status-line.error {
+      color: var(--danger);
+    }
+
+    /* Visualizacao de Aba Aberta */
+    .tab-workspace {
+      flex: 1 0 auto;
+      display: flex;
+      flex-direction: column;
+      padding: 0 24px 16px;
+      max-width: 1120px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .mini-tab-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-bottom: none;
+      border-radius: 10px 10px 0 0;
+    }
+
+    .mini-tabs-list {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      min-width: 0;
+    }
+
+    .mini-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      background-color: transparent;
+      border: 1px solid transparent;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .mini-tab.active {
+      background-color: var(--bg-page);
+      border-color: var(--border-light);
+      color: var(--text-main);
+    }
+
+    .mini-tab-close {
+      background: none;
+      border: none;
+      color: var(--text-subtle);
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0 2px;
+    }
+
+    .mini-tab-close:hover {
+      color: var(--text-main);
+    }
+
+    .web-frame-box {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-light);
+      border-radius: 0 0 10px 10px;
+      background-color: var(--bg-page);
+      overflow: hidden;
+      min-height: 500px;
+    }
+
+    .web-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-light);
+      background-color: var(--bg-page);
+    }
+
+    .web-url-text {
+      flex: 1 1 260px;
+      font-size: 12px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 9999px;
+      padding: 6px 14px;
+    }
+
+    .web-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-sm {
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-main);
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-sm:hover {
+      background-color: var(--bg-hover);
+    }
+
+    .btn-sm-accent {
+      background-color: var(--accent);
+      border-color: transparent;
+      color: #ffffff;
+    }
+
+    .btn-sm-accent:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .web-iframe {
+      width: 100%;
+      flex: 1 1 auto;
+      min-height: 440px;
+      border: none;
+      background-color: #ffffff;
+    }
+
+    /* Rodape com texto Corporacao Engecema + Botao SAIR discreto */
+    .bottom-corner-bar {
+      padding: 14px 24px;
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-corp-text {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-subtle);
+    }
+
+    .btn-sair-discreet {
+      background-color: transparent;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-subtle);
+      cursor: pointer;
+      min-height: 32px;
+      transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+    }
+
+    .btn-sair-discreet:hover {
+      color: var(--danger);
+      border-color: #fecaca;
+      background-color: #fef2f2;
+    }
+
+    /* Formularios e Modais */
+    .form-group {
+      margin-bottom: 11px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .form-input {
+      width: 100%;
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-medium);
+      border-radius: 6px;
+      padding: 8px 11px;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 13px;
+      min-height: 38px;
+    }
+
+    .form-error {
+      font-size: 12px;
+      color: var(--danger);
+      min-height: 16px;
+      margin: 4px 0 8px;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 38px;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .btn-full {
+      width: 100%;
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-soft);
+      color: var(--text-main);
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      min-height: 38px;
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--bg-hover);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(15, 23, 42, 0.36);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 100;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 440px;
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: left;
+      box-shadow: var(--shadow-popover);
+    }
+
+    .modal-title {
+      margin: 0 0 6px;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .modal-sub {
+      margin: 0 0 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .quick-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+    }
+
+    .quick-open-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1 1 auto;
+    }
+
+    .quick-open-btn:hover {
+      color: var(--accent);
+    }
+
+    .quick-del-btn {
+      background: none;
+      border: none;
+      color: var(--text-subtle);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 4px;
+    }
+
+    .quick-del-btn:hover {
+      color: var(--danger);
+    }
+
+    @media (max-width: 600px) {
+      .minimal-header {
+        padding: 12px 14px;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .header-links {
+        gap: 10px;
+      }
+      .bottom-corner-bar {
+        padding: 12px 14px;
+      }
+      .quick-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<script>if(window.location.search==="?"){window.history.replaceState({},"","/");}</script>
+  <!-- Canto Superior Direito: Atalhos + Aba de Fazer Login e Cadastro de Usuario -->
+  <header class="minimal-header">
+    <nav class="header-links" aria-label="Atalhos superiores">
+      </nav>
+
+    <div class="auth-header-controls" id="authHeaderWrap">
+      <button type="button" id="xiqiDotsBtn" title="Aplicativos XIQI OS" aria-label="Aplicativos" style="background:transparent;border:0;padding:8px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:6px;"><svg width="20" height="20" viewBox="0 0 16 16"><circle cx="4" cy="4" r="2.4" fill="#2563eb"/><circle cx="12" cy="4" r="2.4" fill="#16a34a"/><circle cx="4" cy="12" r="2.4" fill="#16a34a"/><circle cx="12" cy="12" r="2.4" fill="#2563eb"/></svg></button>
+      <div id="guestAuthButtons" class="auth-btn-group">
+        <button type="button" class="btn-header-login" id="openLoginTabBtn">Fazer Login</button>
+        <button type="button" class="btn-header-register" id="openRegisterTabBtn">Cadastrar Usuário</button>
+      </div>
+
+      <div id="loggedUserControls" class="auth-btn-group hidden">
+        <button type="button" class="header-user-pill" id="userBadgeBtn" title="Abrir conta">
+          <span class="avatar-circle" id="headerAvatar">US</span>
+          <span id="headerUserName">Usuário</span>
+        </button>
+        <button type="button" class="btn-header-login" id="switchAccountTopBtn">Trocar Conta</button>
+      </div>
+
+      <div class="auth-popover hidden" id="authPopover" role="dialog" aria-label="Acesso e cadastro de usuário">
+        <div class="auth-tabs" role="tablist">
+          <button type="button" class="auth-tab-btn active" id="tabBtnLogin" role="tab" aria-selected="true">Fazer Login</button>
+          <button type="button" class="auth-tab-btn" id="tabBtnRegister" role="tab" aria-selected="false">Cadastro de Usuário</button>
+        </div>
+
+        <div id="loginTabPanel">
+          <div id="savedAccountsContainer"></div>
+          <form id="loginForm" autocomplete="off">
+            <div class="form-group">
+              <label class="form-label" for="loginIdentifier">E-mail ou Usuário Corporativo</label>
+              <input class="form-input" id="loginIdentifier" type="text" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="loginPin">Senha ou PIN</label>
+              <input class="form-input" id="loginPin" type="password" required>
+            </div>
+            <div class="form-error" id="loginError"></div>
+            <button type="submit" class="btn-primary btn-full">Entrar</button>
+          </form>
+        </div>
+
+        <div id="registerTabPanel" class="hidden">
+          <form id="registerForm" autocomplete="off">
+            <div class="form-group">
+              <label class="form-label" for="regFullName">Nome Completo</label>
+              <input class="form-input" id="regFullName" type="text" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regIdentifier">E-mail ou Usuário Corporativo</label>
+              <input class="form-input" id="regIdentifier" type="text" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regPin">Senha ou PIN de acesso</label>
+              <input class="form-input" id="regPin" type="password" required minlength="4">
+            </div>
+            <div class="form-error" id="registerError"></div>
+            <button type="submit" class="btn-primary btn-full">Cadastrar e Entrar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Centro Limpo Estilo Google Chrome + Modo IA -->
+  <main class="chrome-center" id="chromeCenterView">
+    <h1 class="xiqi-wordmark notranslate" translate="no">XIQI</h1>
+
+    <form class="search-box-wrap" id="searchForm">
+      <div class="search-pill" id="searchPill">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          aria-label="Campo de pesquisa, endereço URL ou pergunta no Modo IA"
+          autocomplete="off"
+        >
+        <button type="button" class="ai-mode-toggle" id="aiModeToggleBtn" aria-pressed="false">Modo IA</button>
+      </div>
+
+      <div class="center-actions">
+        <button type="submit" class="chrome-btn" id="primarySearchBtn">Pesquisa XIQI</button>
+        <button type="button" class="chrome-btn" id="quickAccessBtn">Acesso Rápido</button>
+      </div>
+    </form>
+
+    <!-- Painel de Conversa do Modo IA -->
+    <section class="ai-response-panel hidden" id="aiResponsePanel" aria-label="Respostas do Modo IA">
+      <div class="ai-panel-head">
+        <span class="ai-panel-title">Modo IA</span>
+        <div class="ai-panel-actions">
+          <button type="button" class="btn-sm" id="aiClearBtn">Limpar</button>
+          <button type="button" class="btn-sm" id="aiCloseBtn">Fechar</button>
+        </div>
+      </div>
+      <div class="ai-thread" id="aiThread"></div>
+    </section>
+  </main>
+
+  <!-- Visualizacao de Aba Aberta -->
+  <section class="tab-workspace hidden" id="tabWorkspaceView" aria-label="Abas abertas">
+    <div class="mini-tab-bar">
+      <div class="mini-tabs-list" id="miniTabsList"></div>
+      <button type="button" class="btn-sm" id="backToHomeBtn">Nova Aba</button>
+    </div>
+    <div class="web-frame-box" style="border:none;border-radius:0;box-shadow:none;margin:0;padding:0;width:100%;height:calc(100vh - 90px);">
+      <div class="web-toolbar" style="display:none;">
+        <div class="web-url-text" id="webUrlDisplay">https://</div>
+        <div class="web-toolbar-actions">
+          <button type="button" class="btn-sm" id="webReloadBtn">Recarregar</button>
+          <a href="#" target="_blank" rel="noopener noreferrer" class="btn-sm btn-sm-accent" id="webExternalLink">Abrir externamente</a>
+        </div>
+      </div>
+      <iframe
+        id="webIframe"
+        class="web-iframe"
+        title="Conteúdo da aba XIQI"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        referrerpolicy="no-referrer"
+      ></iframe>
+    </div>
+  </section>
+
+  <!-- Rodape com Corporacao Engecema + Botao SAIR discreto -->
+  <footer class="bottom-corner-bar">
+    <span class="footer-corp-text">Corporação Engecema</span>
+    <button type="button" class="btn-sair-discreet" id="exitSessionBtn">SAIR</button>
+  </footer>
+
+  <!-- Modal: Acesso Rapido -->
+  <div class="modal-backdrop hidden" id="quickAccessModal" role="dialog" aria-modal="true" aria-labelledby="quickAccessTitle">
+    <div class="modal-card">
+      <h2 class="modal-title" id="quickAccessTitle">Acesso Rápido</h2>
+      <p class="modal-sub" id="quickAccessOwner">Atalhos e motor de busca</p>
+
+      <div class="form-group">
+        <label class="form-label" for="quickEngineSelect">Motor de busca padrão</label>
+        <select class="form-input notranslate" translate="no" id="quickEngineSelect">
+          <option value="google">Google</option>
+          <option value="duckduckgo">DuckDuckGo</option>
+          <option value="bing">Bing</option>
+        </select>
+      </div>
+
+      <div class="quick-grid" id="quickShortcutsGrid"></div>
+
+      <form id="addQuickShortcutForm" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label" for="quickShortcutName">Nome do atalho rápido</label>
+          <input class="form-input" id="quickShortcutName" type="text" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="quickShortcutUrl">Endereço URL do atalho</label>
+          <input class="form-input" id="quickShortcutUrl" type="text" required>
+        </div>
+        <div class="form-error" id="quickShortcutError"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="closeQuickAccessBtn">Fechar</button>
+          <button type="submit" class="btn-primary">+ Salvar Atalho</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var STORAGE_KEY = 'xiqi_os_workspace_v3';
+      var AVATAR_PALETTE = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#0d9488', '#dc2626'];
+      var MAX_FAILED_ATTEMPTS = 5;
+      var LOCKOUT_DURATION_MS = 30 * 1000;
+
+      var SEARCH_ENGINES = {
+        google: { name: 'Google', url: String.fromCharCode(47) + 'api' + String.fromCharCode(47) + 'search?q=' },
+        duckduckgo: { name: 'DuckDuckGo', url: String.fromCharCode(47) + 'api' + String.fromCharCode(47) + 'search?q=' },
+        bing: { name: 'Bing', url: String.fromCharCode(47) + 'api' + String.fromCharCode(47) + 'search?q=' }
+      };
+
+      /* ===================================================================
+         UTILITARIOS DE SEGURANCA (HASHING SHA-256 + VALIDACAO ESTRITA DE URL)
+         =================================================================== */
+      function generateSaltHex(byteLen) {
+        var bytes = new Uint8Array(byteLen || 16);
+        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+          window.crypto.getRandomValues(bytes);
+        } else {
+          for (var i = 0; i < bytes.length; i++) {
+            bytes[i] = Math.floor(Math.random() * 256);
+          }
+        }
+        return Array.prototype.map.call(bytes, function (b) {
+          return ('00' + b.toString(16)).slice(-2);
+        }).join('');
+      }
+
+      /* Implementacao SHA-256 pura para funcionar inclusive em HTTP local sem crypto.subtle */
+      function sha256Fallback(ascii) {
+        function rightRotate(value, amount) {
+          return (value >>> amount) | (value << (32 - amount));
+        }
+        var mathPow = Math.pow;
+        var maxWord = mathPow(2, 32);
+        var i, j;
+        var result = '';
+        var words = [];
+        var asciiBitLength = ascii.length * 8;
+        var hash = (sha256Fallback.h = sha256Fallback.h || []);
+        var k = (sha256Fallback.k = sha256Fallback.k || []);
+        var primeCounter = k.length;
+        var isComposite = {};
+        for (var candidate = 2; primeCounter < 64; candidate++) {
+          if (!isComposite[candidate]) {
+            for (i = 0; i < 313; i += candidate) {
+              isComposite[i] = candidate;
+            }
+            hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+            k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+          }
+        }
+        ascii += '\x80';
+        while ((ascii.length % 64) - 56) ascii += '\x00';
+        for (i = 0; i < ascii.length; i++) {
+          j = ascii.charCodeAt(i);
+          if (j >> 8) return '';
+          words[i >> 2] |= j << (((3 - i) % 4) * 8);
+        }
+        words[words.length] = (asciiBitLength / maxWord) | 0;
+        words[words.length] = asciiBitLength;
+        for (j = 0; j < words.length;) {
+          var w = words.slice(j, (j += 16));
+          var oldHash = hash;
+          hash = hash.slice(0, 8);
+          for (i = 0; i < 64; i++) {
+            var w15 = w[i - 15], w2 = w[i - 2];
+            var a = hash[0], e = hash[4];
+            var temp1 =
+              hash[7] +
+              (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
+              ((e & hash[5]) ^ (~e & hash[6])) +
+              k[i] +
+              (w[i] =
+                i < 16
+                  ? w[i]
+                  : (w[i - 16] +
+                      (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+                      w[i - 7] +
+                      (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) |
+                    0);
+            var temp2 =
+              (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) +
+              ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+            hash = [(temp1 + temp2) | 0].concat(hash);
+            hash[4] = (hash[4] + temp1) | 0;
+          }
+          for (i = 0; i < 8; i++) {
+            hash[i] = (hash[i] + oldHash[i]) | 0;
+          }
+        }
+        for (i = 0; i < 8; i++) {
+          for (j = 3; j + 1; j--) {
+            var b = (hash[i] >> (j * 8)) & 255;
+            result += (b < 16 ? 0 : '') + b.toString(16);
+          }
+        }
+        return result;
+      }
+
+      async function hashSecretWithSalt(secret, salt) {
+        var payload = String(salt) + ':' + String(secret);
+        if (window.crypto && window.crypto.subtle && typeof TextEncoder !== 'undefined') {
+          var encoded = new TextEncoder().encode(payload);
+          var digest = await window.crypto.subtle.digest('SHA-256', encoded);
+          var arr = Array.from(new Uint8Array(digest));
+          return arr.map(function (b) { return ('00' + b.toString(16)).slice(-2); }).join('');
+        }
+        var utf8Bytes = encodeURIComponent(payload).replace(/%([0-9A-F]{2})/g, function (_, hex) {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
+        return sha256Fallback(utf8Bytes);
+      }
+
+      function constantTimeEquals(a, b) {
+        var strA = String(a || '');
+        var strB = String(b || '');
+        if (strA.length !== strB.length) return false;
+        var diff = 0;
+        for (var i = 0; i < strA.length; i++) {
+          diff |= strA.charCodeAt(i) ^ strB.charCodeAt(i);
+        }
+        return diff === 0;
+      }
+
+      function isSafeHttpUrl(url) { if (String(url || "").startsWith("/api/")) return true;
+        try {
+          var parsed = new URL(String(url || '').trim());
+          return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch (err) {
+          return false;
+        }
+      }
+
+      function normalizeSafeHttpUrl(rawInput) {
+        var trimmed = String(rawInput || '').trim();
+        if (!trimmed) return null;
+        if (/^(javascript|data|vbscript|file):/i.test(trimmed)) return null;
+        var candidate = /^https?:\/\//i.test(trimmed) ? trimmed : ('https://' + trimmed);
+        return isSafeHttpUrl(candidate) ? candidate : null;
+      }
+
+      function looksLikeUrl(input) {
+        var s = String(input || '').trim();
+        if (!s || /\s/.test(s)) return false;
+        if (/^(javascript|data|vbscript|file):/i.test(s)) return false;
+        if (/^https?:\/\//i.test(s)) return true;
+        if (/^localhost(:\d+)?(\/.*)?$/i.test(s)) return true;
+        return /^[a-z0-9-]+(\.[a-z0-9-]+)+([/:?#].*)?$/i.test(s);
+      }
+
+      function extractDomain(url) {
+        try {
+          var u = new URL(url);
+          return u.hostname.replace(/^www\./i, '');
+        } catch (err) {
+          return 'link';
+        }
+      }
+
+      /* ===================================================================
+         GERENCIAMENTO DE ESTADO ISOLADO NO LOCALSTORAGE
+         =================================================================== */
+      function createDefaultWorkspace() {
+        return {
+          activeUserId: null,
+          failedAttempts: 0,
+          lockUntil: 0,
+          users: [],
+          guestSession: {
+            searchEngine: 'google',
+            aiMode: false,
+            aiHistory: [],
+            activeTabId: 'tab-guest-home',
+            tabs: [
+              { id: 'tab-guest-home', title: 'Nova Aba', type: 'newtab', url: '' }
+            ],
+            shortcuts: [
+              { id: 'sc-g1', name: 'GitHub', url: 'https://github.com' },
+              { id: 'sc-g2', name: 'Google', url: 'https://www.google.com' },
+              { id: 'sc-g3', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
+              { id: 'sc-g4', name: 'Tailscale', url: 'https://login.tailscale.com' }
+            ]
+          }
+        };
+      }
+
+      function sanitizeShortcuts(list) {
+        if (!Array.isArray(list)) return [];
+        return list.filter(function (sc) {
+          return sc && typeof sc.name === 'string' && isSafeHttpUrl(sc.url);
+        }).map(function (sc) {
+          return {
+            id: String(sc.id || ('sc-' + Date.now())),
+            name: sc.name.trim().slice(0, 60),
+            url: sc.url
+          };
+        });
+      }
+
+      function loadStore() {
+        try {
+          var raw = null;
+          if (!raw) {
+            var init = createDefaultWorkspace();
+            saveStore(init);
+            return init;
+          }
+          var parsed = JSON.parse(raw);
+          if (!parsed || !Array.isArray(parsed.users) || !parsed.guestSession) {
+            var fallback = createDefaultWorkspace();
+            saveStore(fallback);
+            return fallback;
+          }
+          parsed.guestSession.shortcuts = sanitizeShortcuts(parsed.guestSession.shortcuts);
+          parsed.users.forEach(function (u) {
+            if (u) {
+              if (AVATAR_PALETTE.indexOf(u.color) === -1) {
+                u.color = AVATAR_PALETTE[0];
+              }
+              if (u.session) {
+                u.session.shortcuts = sanitizeShortcuts(u.session.shortcuts);
+              }
+            }
+          });
+          return parsed;
+        } catch (err) {
+          return createDefaultWorkspace();
+        }
+      }
+
+      function saveStore(nextStore) {
+        try {
+          fetch("/api/store", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nextStore) }).catch(function(){});
+        } catch (err) {
+          // Ignora erro de quota
+        }
+      }
+
+      var store = loadStore(); fetch("/api/store").then(function(r){ return r.json(); }).then(function(d){ if (d && Array.isArray(d.users)) { store.users = d.users; store.activeUserId = d.activeUserId || null; if (d.guestSession) store.guestSession = d.guestSession; if (typeof renderAll === "function") renderAll(); } }).catch(function(){});
+      var aiLoading = false;
+      var aiLastError = '';
+
+      function getCurrentUser() {
+        if (!store.activeUserId) return null;
+        return store.users.find(function (u) { return u.id === store.activeUserId; }) || null;
+      }
+
+      function getActiveSession() {
+        var user = getCurrentUser();
+        var session = user ? user.session : store.guestSession;
+        if (!Array.isArray(session.tabs) || session.tabs.length === 0) {
+          var homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+          session.tabs = [homeTab];
+          session.activeTabId = homeTab.id;
+        }
+        if (!Array.isArray(session.aiHistory)) {
+          session.aiHistory = [];
+        }
+        return session;
+      }
+
+      function getInitials(name) {
+        var parts = String(name || 'US').trim().split(/\s+/);
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+
+      /* ===================================================================
+         PAINEL DE LOGIN E CADASTRO NO CANTO SUPERIOR DIREITO
+         =================================================================== */
+      var authPopover = document.getElementById('authPopover');
+      var tabBtnLogin = document.getElementById('tabBtnLogin');
+      var tabBtnRegister = document.getElementById('tabBtnRegister');
+      var loginTabPanel = document.getElementById('loginTabPanel');
+      var registerTabPanel = document.getElementById('registerTabPanel');
+
+      function setAuthTab(mode) {
+        var isLogin = mode === 'login';
+        tabBtnLogin.classList.toggle('active', isLogin);
+        tabBtnRegister.classList.toggle('active', !isLogin);
+        tabBtnLogin.setAttribute('aria-selected', isLogin ? 'true' : 'false');
+        tabBtnRegister.setAttribute('aria-selected', !isLogin ? 'true' : 'false');
+        loginTabPanel.classList.toggle('hidden', !isLogin);
+        registerTabPanel.classList.toggle('hidden', isLogin);
+        document.getElementById('loginError').textContent = '';
+        document.getElementById('registerError').textContent = '';
+
+        if (isLogin) {
+          renderSavedAccountChips();
+          document.getElementById('loginIdentifier').focus();
+        } else {
+          document.getElementById('regFullName').focus();
+        }
+      }
+
+      function openAuthPopover(mode) {
+        authPopover.classList.remove('hidden');
+        setAuthTab(mode || 'login');
+      }
+
+      function closeAuthPopover() {
+        authPopover.classList.add('hidden');
+      }
+
+      function renderSavedAccountChips() {
+        var container = document.getElementById('savedAccountsContainer');
+        container.innerHTML = '';
+
+        if (store.users.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'auth-empty-hint';
+          empty.textContent = 'Nenhuma conta salva neste dispositivo. Utilize a aba Cadastro de Usuário.';
+          container.appendChild(empty);
+          return;
+        }
+
+        var row = document.createElement('div');
+        row.className = 'saved-accounts-row';
+
+        store.users.forEach(function (u) {
+          var chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'saved-account-chip' + (u.id === store.activeUserId ? ' selected' : '');
+
+          var av = document.createElement('span');
+          av.className = 'avatar-circle avatar-circle-sm';
+          av.style.backgroundColor = u.color || '#2563eb';
+          av.textContent = getInitials(u.name);
+
+          var label = document.createElement('span');
+          label.textContent = u.name;
+
+          chip.appendChild(av);
+          chip.appendChild(label);
+
+          chip.addEventListener('click', function () {
+            document.getElementById('loginIdentifier').value = u.identifier;
+            document.getElementById('loginPin').value = '';
+            document.getElementById('loginError').textContent = '';
+            document.getElementById('loginPin').focus();
+          });
+
+          row.appendChild(chip);
+        });
+
+        container.appendChild(row);
+      }
+
+      document.getElementById('openLoginTabBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        try{localStorage.clear();sessionStorage.clear();}catch(e){} openAuthPopover('login');
+      });
+
+      document.getElementById('openRegisterTabBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        openAuthPopover('register');
+      });
+
+      document.getElementById('switchAccountTopBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        try{localStorage.clear();sessionStorage.clear();}catch(e){} openAuthPopover('login');
+      });
+
+      document.getElementById('userBadgeBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (authPopover.classList.contains('hidden')) {
+          try{localStorage.clear();sessionStorage.clear();}catch(e){} openAuthPopover('login');
+        } else {
+          closeAuthPopover();
+        }
+      });
+
+      tabBtnLogin.addEventListener('click', function () { setAuthTab('login'); });
+      tabBtnRegister.addEventListener('click', function () { setAuthTab('register'); });
+
+      document.addEventListener('click', function (e) {
+        if (!document.getElementById('authHeaderWrap').contains(e.target)) {
+          closeAuthPopover();
+        }
+      });
+
+      /* Submit: Fazer Login com protecao contra forca bruta + hash SHA-256 com salt */
+      document.getElementById('loginForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var errEl = document.getElementById('loginError');
+        var now = Date.now();
+
+        if (store.lockUntil && now < store.lockUntil) {
+          var secs = Math.ceil((store.lockUntil - now) / 1000);
+          errEl.textContent = 'Muitas tentativas inválidas. Aguarde ' + secs + 's.';
+          return;
+        }
+
+        var identifier = document.getElementById('loginIdentifier').value.trim();
+        var pin = document.getElementById('loginPin').value;
+
+        var user = store.users.find(function (u) {
+          return u.identifier.toLowerCase() === identifier.toLowerCase();
+        });
+
+        if (!user) {
+          store.failedAttempts = (store.failedAttempts || 0) + 1;
+          if (store.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+            store.lockUntil = now + LOCKOUT_DURATION_MS;
+            store.failedAttempts = 0;
+          }
+          saveStore(store);
+          errEl.textContent = 'Credenciais inválidas.';
+          return;
+        }
+
+        var computedHash = await hashSecretWithSalt(pin, user.salt);
+        if (!constantTimeEquals(computedHash, user.pinHash)) {
+          store.failedAttempts = (store.failedAttempts || 0) + 1;
+          if (store.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+            store.lockUntil = now + LOCKOUT_DURATION_MS;
+            store.failedAttempts = 0;
+            saveStore(store);
+            errEl.textContent = 'Muitas tentativas inválidas. Bloqueado por 30 segundos.';
+            return;
+          }
+          saveStore(store);
+          errEl.textContent = 'Credenciais inválidas.';
+          return;
+        }
+
+        store.failedAttempts = 0;
+        store.lockUntil = 0;
+        store.activeUserId = user.id;
+        saveStore(store);
+        document.getElementById('loginForm').reset();
+        closeAuthPopover();
+        renderAll();
+      });
+
+      /* Submit: Cadastro de Usuario com hash SHA-256 + salt aleatorio */
+      document.getElementById('registerForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var fullName = document.getElementById('regFullName').value.trim().slice(0, 80);
+        var identifier = document.getElementById('regIdentifier').value.trim().slice(0, 120);
+        var pin = document.getElementById('regPin').value;
+        var errEl = document.getElementById('registerError');
+
+        if (!fullName || !identifier || pin.length < 4) {
+          errEl.textContent = 'Preencha Nome, E-mail/Usuário e Senha/PIN (mínimo 4 caracteres).';
+          return;
+        }
+
+        var exists = store.users.some(function (u) {
+          return u.identifier.toLowerCase() === identifier.toLowerCase();
+        });
+        if (exists) {
+          errEl.textContent = 'Já existe um usuário com este identificador.';
+          return;
+        }
+
+        var salt = generateSaltHex(16);
+        var pinHash = await hashSecretWithSalt(pin, salt);
+        var userId = 'user-' + Date.now();
+        var initialTabId = 'tab-' + Date.now();
+        var color = AVATAR_PALETTE[store.users.length % AVATAR_PALETTE.length];
+
+        var newUser = {
+          id: userId,
+          name: fullName,
+          identifier: identifier,
+          salt: salt,
+          pinHash: pinHash,
+          color: color,
+          session: {
+            searchEngine: 'google',
+            aiMode: false,
+            aiHistory: [],
+            activeTabId: initialTabId,
+            tabs: [
+              { id: initialTabId, title: 'Nova Aba', type: 'newtab', url: '' }
+            ],
+            shortcuts: [
+              { id: 'sc-' + Date.now() + '-1', name: 'GitHub', url: 'https://github.com' },
+              { id: 'sc-' + Date.now() + '-2', name: 'Google', url: 'https://www.google.com' },
+              { id: 'sc-' + Date.now() + '-3', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
+              { id: 'sc-' + Date.now() + '-4', name: 'Tailscale', url: 'https://login.tailscale.com' }
+            ]
+          }
+        };
+
+        store.users.push(newUser);
+        store.activeUserId = userId;
+        saveStore(store);
+
+        document.getElementById('registerForm').reset();
+        closeAuthPopover();
+        renderAll();
+      });
+
+      /* ===================================================================
+         MODO IA (CHAMADA SEGURA VIA /api/ai NO SERVIDOR)
+         =================================================================== */
+      function renderAiPanel(session) {
+        var toggleBtn = document.getElementById('aiModeToggleBtn');
+        var searchPill = document.getElementById('searchPill');
+        var primaryBtn = document.getElementById('primarySearchBtn');
+        var panel = document.getElementById('aiResponsePanel');
+        var thread = document.getElementById('aiThread');
+
+        var isAiActive = Boolean(session.aiMode);
+        toggleBtn.classList.toggle('active', isAiActive);
+        toggleBtn.setAttribute('aria-pressed', isAiActive ? 'true' : 'false');
+        searchPill.classList.toggle('ai-active', isAiActive);
+        primaryBtn.classList.toggle('chrome-btn-ai', isAiActive);
+        primaryBtn.textContent = isAiActive ? 'Perguntar à IA' : 'Pesquisa XIQI';
+
+        var hasMessages = session.aiHistory && session.aiHistory.length > 0;
+        var shouldShowPanel = isAiActive && (hasMessages || aiLoading || aiLastError);
+        panel.classList.toggle('hidden', !shouldShowPanel);
+
+        if (!shouldShowPanel) {
+          return;
+        }
+
+        thread.innerHTML = '';
+        session.aiHistory.forEach(function (msg) {
+          var item = document.createElement('div');
+          item.className = 'ai-msg';
+
+          var roleEl = document.createElement('div');
+          roleEl.className = 'ai-msg-role' + (msg.role === 'model' ? ' model' : '');
+          roleEl.textContent = msg.role === 'model' ? 'XIQI IA' : 'Você';
+
+          var bubble = document.createElement('div');
+          bubble.className = 'ai-msg-bubble' + (msg.role === 'user' ? ' user' : '');
+          if (msg.role === "model") {
+            bubble.style.whiteSpace = "pre-line";
+            String(msg.text || "").split(/(https?:\/\/[^\s]+)/g).forEach(function (part) {
+              if (/^https?:\/\//.test(part)) {
+                var a = document.createElement("a");
+                a.href = part;
+                a.textContent = part;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                a.style.color = "#2563eb";
+                a.style.textDecoration = "underline";
+                a.style.wordBreak = "break-all";
+                bubble.appendChild(a);
+              } else {
+                bubble.appendChild(document.createTextNode(part));
+              }
+            });
+          } else {
+            bubble.textContent = msg.text;
+          }
+
+          item.appendChild(roleEl);
+          item.appendChild(bubble);
+          thread.appendChild(item);
+        });
+
+        if (aiLoading) {
+          var loadingEl = document.createElement('div');
+          loadingEl.className = 'ai-status-line';
+          loadingEl.textContent = 'Processando resposta no Modo IA...';
+          thread.appendChild(loadingEl);
+        }
+
+        if (aiLastError) {
+          var errEl = document.createElement('div');
+          errEl.className = 'ai-status-line error';
+          errEl.textContent = aiLastError;
+          thread.appendChild(errEl);
+        }
+
+        thread.scrollTop = thread.scrollHeight;
+      }
+
+      async function submitAiPrompt(promptText) {
+        var session = getActiveSession();
+        var historySnapshot = (session.aiHistory || []).slice(-10);
+
+        aiLastError = '';
+        aiLoading = true;
+        session.aiHistory.push({ role: 'user', text: promptText });
+        saveStore(store);
+        renderAiPanel(session);
+
+        try {
+          var resp = await fetch('/api/ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: promptText,
+              history: historySnapshot
+            })
+          });
+          var data = await resp.json().catch(function () { return {}; });
+          if (!resp.ok) {
+            aiLastError = (data && data.error) ? String(data.error) : 'Não foi possível concluir a solicitação no Modo IA.';
+          } else if (data && typeof data.text === 'string' && data.text.trim()) {
+            session.aiHistory.push({ role: 'model', text: data.text.trim() });
+            saveStore(store);
+          } else {
+            aiLastError = 'Resposta vazia recebida do Modo IA.';
+          }
+        } catch (err) {
+          aiLastError = 'Falha de comunicação com o servidor do Modo IA.';
+        } finally {
+          aiLoading = false;
+          renderAiPanel(session);
+        }
+      }
+
+      document.getElementById('aiModeToggleBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        session.aiMode = !session.aiMode;
+        aiLastError = '';
+        saveStore(store);
+        renderAiPanel(session);
+        document.getElementById('searchInput').focus();
+      });
+
+      document.getElementById('aiClearBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        session.aiHistory = [];
+        aiLastError = '';
+        saveStore(store);
+        renderAiPanel(session);
+      });
+
+      document.getElementById('aiCloseBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        session.aiMode = false;
+        aiLastError = '';
+        saveStore(store);
+        renderAiPanel(session);
+      });
+
+      /* ===================================================================
+         RENDERIZACAO DA PAGINA PRINCIPAL E ABAS ISOLADAS
+         =================================================================== */
+      function renderHeader() {
+        var user = getCurrentUser();
+        var guestBtns = document.getElementById('guestAuthButtons');
+        var loggedCtrls = document.getElementById('loggedUserControls');
+
+        if (user) {
+          guestBtns.classList.add('hidden');
+          loggedCtrls.classList.remove('hidden');
+          var av = document.getElementById('headerAvatar');
+          av.textContent = getInitials(user.name);
+          av.style.backgroundColor = user.color || '#2563eb';
+          document.getElementById('headerUserName').textContent = user.name;
+        } else {
+          loggedCtrls.classList.add('hidden');
+          guestBtns.classList.remove('hidden');
+        }
+      }
+
+      function renderMiniTabs(session) {
+        var list = document.getElementById('miniTabsList');
+        list.innerHTML = '';
+
+        session.tabs.forEach(function (tab) {
+          var btn = document.createElement('div');
+          btn.className = 'mini-tab' + (tab.id === session.activeTabId ? ' active' : '');
+          btn.setAttribute('role', 'tab');
+          btn.setAttribute('tabindex', '0');
+
+          var title = document.createElement('span');
+          title.className = 'notranslate';
+          title.setAttribute('translate', 'no');
+          title.textContent = tab.title;
+          btn.appendChild(title);
+
+          var closeBtn = document.createElement('button');
+          closeBtn.type = 'button';
+          closeBtn.className = 'mini-tab-close';
+          closeBtn.textContent = 'x';
+          closeBtn.setAttribute('aria-label', 'Fechar aba ' + tab.title);
+          closeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (session.tabs.length === 1) {
+              var homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+              session.tabs = [homeTab];
+              session.activeTabId = homeTab.id;
+            } else {
+              var idx = session.tabs.findIndex(function (t) { return t.id === tab.id; });
+              session.tabs = session.tabs.filter(function (t) { return t.id !== tab.id; });
+              if (session.activeTabId === tab.id) {
+                session.activeTabId = session.tabs[Math.max(0, idx - 1)].id;
+              }
+            }
+            saveStore(store);
+            renderWorkspace();
+          });
+          btn.appendChild(closeBtn);
+
+          btn.addEventListener('click', function () {
+            session.activeTabId = tab.id;
+            saveStore(store);
+            renderWorkspace();
+          });
+
+          list.appendChild(btn);
+        });
+      }
+
+      function renderWorkspace() {
+        var session = getActiveSession();
+        var activeTab = session.tabs.find(function (t) { return t.id === session.activeTabId; });
+        if (!activeTab) {
+          activeTab = session.tabs[0];
+          session.activeTabId = activeTab.id;
+        }
+
+        var centerView = document.getElementById('chromeCenterView');
+        var tabView = document.getElementById('tabWorkspaceView');
+        var iframe = document.getElementById('webIframe');
+
+        if (activeTab.type === 'web' && (isSafeHttpUrl(activeTab.url) || String(activeTab.url).startsWith("/api/"))) {
+          centerView.classList.add('hidden');
+          tabView.classList.remove('hidden');
+          renderMiniTabs(session);
+
+          document.getElementById('webUrlDisplay').textContent = activeTab.url;
+          document.getElementById('webExternalLink').href = activeTab.url;
+          if (iframe.getAttribute('data-loaded-url') !== activeTab.url) {
+            iframe.src = activeTab.url;
+            iframe.setAttribute('data-loaded-url', activeTab.url);
+          }
+        } else {
+          tabView.classList.add('hidden');
+          centerView.classList.remove('hidden');
+          renderAiPanel(session);
+        }
+      }
+
+      function renderAll() {
+        renderHeader();
+        renderWorkspace();
+      }
+
+      function openUrlInNewTab(url, customTitle) {
+        if (!(isSafeHttpUrl(url) || String(url).startsWith("/api/"))) return;
+        var session = getActiveSession();
+        var tab = {
+          id: 'tab-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+          title: String(customTitle || extractDomain(url)).slice(0, 60),
+          type: 'web',
+          url: url
+        };
+        session.tabs.push(tab);
+        session.activeTabId = tab.id;
+        saveStore(store);
+        renderWorkspace();
+      }
+
+      /* Pesquisa Central / Envio no Modo IA */
+      document.getElementById('searchForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var inputEl = document.getElementById('searchInput');
+        var query = inputEl.value.trim();
+        if (!query) {
+          inputEl.focus();
+          return;
+        }
+
+        var session = getActiveSession();
+        if (session.aiMode) {
+          if (aiLoading) return;
+          inputEl.value = '';
+          submitAiPrompt(query);
+          return;
+        }
+
+        var engineKey = session.searchEngine || 'google';
+        var engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
+
+        if (looksLikeUrl(query)) {
+          var targetUrl = normalizeSafeHttpUrl(query);
+          if (targetUrl) {
+            openUrlInNewTab(targetUrl, extractDomain(targetUrl));
+          }
+        } else {
+          var searchUrl = engine.url + encodeURIComponent(query);
+          openUrlInNewTab(searchUrl, engine.name + ': ' + query);
+        }
+        inputEl.value = '';
+      });
+
+      /* Atalhos do Topo Direito */
+      
+
+      
+
+      document.getElementById('backToHomeBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        var homeTab = session.tabs.find(function (t) { return t.type === 'newtab'; });
+        if (!homeTab) {
+          homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+          session.tabs.unshift(homeTab);
+        }
+        session.activeTabId = homeTab.id;
+        saveStore(store);
+        renderWorkspace();
+      });
+
+      document.getElementById('webReloadBtn').addEventListener('click', function () {
+        var iframe = document.getElementById('webIframe');
+        var url = iframe.getAttribute('data-loaded-url');
+        if ((isSafeHttpUrl(url) || String(url).startsWith("/api/"))) iframe.src = url;
+      });
+
+      /* Botao SAIR */
+      document.getElementById('exitSessionBtn').addEventListener('click', function () {
+        if (store.activeUserId) {
+          store.activeUserId = null;
+          saveStore(store);
+          renderAll();
+        } else {
+          var homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+          store.guestSession.tabs = [homeTab];
+          store.guestSession.activeTabId = homeTab.id;
+          store.guestSession.aiMode = false;
+          store.guestSession.aiHistory = [];
+          saveStore(store);
+          renderAll();
+        }
+        try{localStorage.clear();sessionStorage.clear();}catch(e){} openAuthPopover('login');
+      });
+
+      /* Modal: Acesso Rapido */
+      function renderQuickAccessModal() {
+        var user = getCurrentUser();
+        var session = getActiveSession();
+
+        document.getElementById('quickAccessOwner').textContent = user
+          ? ('Atalhos isolados de ' + user.name)
+          : 'Atalhos da sessão atual';
+        document.getElementById('quickEngineSelect').value = session.searchEngine || 'google';
+
+        var grid = document.getElementById('quickShortcutsGrid');
+        grid.innerHTML = '';
+
+        (session.shortcuts || []).forEach(function (sc) {
+          if (!isSafeHttpUrl(sc.url)) return;
+          var item = document.createElement('div');
+          item.className = 'quick-item';
+
+          var openBtn = document.createElement('button');
+          openBtn.type = 'button';
+          openBtn.className = 'quick-open-btn notranslate';
+          openBtn.setAttribute('translate', 'no');
+          openBtn.textContent = sc.name;
+          openBtn.title = sc.url;
+          openBtn.addEventListener('click', function () {
+            document.getElementById('quickAccessModal').classList.add('hidden');
+            openUrlInNewTab(sc.url, sc.name);
+          });
+
+          var delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'quick-del-btn';
+          delBtn.textContent = 'x';
+          delBtn.setAttribute('aria-label', 'Remover ' + sc.name);
+          delBtn.addEventListener('click', function () {
+            session.shortcuts = session.shortcuts.filter(function (s) { return s.id !== sc.id; });
+            saveStore(store);
+            renderQuickAccessModal();
+          });
+
+          item.appendChild(openBtn);
+          item.appendChild(delBtn);
+          grid.appendChild(item);
+        });
+      }
+
+      document.getElementById('quickAccessBtn').addEventListener('click', function () {
+        document.getElementById('addQuickShortcutForm').reset();
+        document.getElementById('quickShortcutError').textContent = '';
+        renderQuickAccessModal();
+        document.getElementById('quickAccessModal').classList.remove('hidden');
+      });
+
+      document.getElementById('closeQuickAccessBtn').addEventListener('click', function () {
+        document.getElementById('quickAccessModal').classList.add('hidden');
+      });
+
+      document.getElementById('quickEngineSelect').addEventListener('change', function (e) {
+        var session = getActiveSession();
+        if (SEARCH_ENGINES[e.target.value]) {
+          session.searchEngine = e.target.value;
+          saveStore(store);
+        }
+      });
+
+      document.getElementById('addQuickShortcutForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var session = getActiveSession();
+        var name = document.getElementById('quickShortcutName').value.trim().slice(0, 60);
+        var rawUrl = document.getElementById('quickShortcutUrl').value.trim();
+        var errEl = document.getElementById('quickShortcutError');
+
+        if (!name || !rawUrl) {
+          errEl.textContent = 'Informe nome e URL.';
+          return;
+        }
+        var finalUrl = normalizeSafeHttpUrl(rawUrl);
+        if (!finalUrl) {
+          errEl.textContent = 'Informe uma URL HTTP ou HTTPS válida.';
+          return;
+        }
+
+        session.shortcuts.push({
+          id: 'sc-' + Date.now(),
+          name: name,
+          url: finalUrl
+        });
+        saveStore(store);
+        document.getElementById('addQuickShortcutForm').reset();
+        errEl.textContent = '';
+        renderQuickAccessModal();
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          closeAuthPopover();
+          document.getElementById('quickAccessModal').classList.add('hidden');
+        }
+      });
+
+      renderAll();
+      document.getElementById('searchInput').focus();
+    })();
+  </script>
+
+  
+
+<div id="xiqiAppMenu" style="position:fixed;top:58px;right:20px;width:270px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 12px 28px rgba(0,0,0,.15);z-index:9997;display:none;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
+  <button type="button" class="xapp" data-a="term" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px;font-weight:700;color:#2563eb">&gt;_</div><div style="font-size:11px;margin-top:4px">Terminal</div></button>
+  <button type="button" class="xapp" data-a="files" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📁</div><div style="font-size:11px;margin-top:4px">Arquivos</div></button>
+  <button type="button" class="xapp" data-a="notes" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📝</div><div style="font-size:11px;margin-top:4px">Notas</div></button>
+  <button type="button" class="xapp" data-a="calc" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🧮</div><div style="font-size:11px;margin-top:4px">Cálculo</div></button>
+  <button type="button" class="xapp" data-a="sys" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🖥️</div><div style="font-size:11px;margin-top:4px">Sistema</div></button>
+  <button type="button" class="xapp" data-a="cal" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📅</div><div style="font-size:11px;margin-top:4px">Data</div></button>
+  <button type="button" class="xapp" data-a="ai" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">✨</div><div style="font-size:11px;margin-top:4px">Modo IA</div></button>
+  <button type="button" class="xapp" data-a="about" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">⚙️</div><div style="font-size:11px;margin-top:4px">Sobre</div></button>
+</div>
+<div id="xiqiWin" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;max-width:450px;width:100%;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:10px">
+      <strong id="xiqiWT">App</strong>
+      <button type="button" id="xiqiWC" class="btn-sm">Fechar</button>
+    </div>
+    <div id="xiqiWB"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var db=document.getElementById("xiqiDotsBtn"),mn=document.getElementById("xiqiAppMenu"),wn=document.getElementById("xiqiWin"),wt=document.getElementById("xiqiWT"),wb=document.getElementById("xiqiWB");
+  if(!db||!mn)return;
+  db.onclick=function(e){e.stopPropagation();mn.style.display = (mn.style.display === "grid") ? "none" : "grid";};
+  document.addEventListener("click",function(e){if(!mn.contains(e.target)&&!db.contains(e.target))mn.style.display = "none";});
+  document.getElementById("xiqiWC").onclick=function(){wn.style.display = "none";};
+  document.querySelectorAll(".xapp").forEach(function(b){
+    b.onclick=async function(){
+      mn.style.display = "none";
+      var a=b.getAttribute("data-a");wb.innerHTML="";
+      if(a==="ai"){var ab=document.getElementById("aiModeToggleBtn");if(ab&&!ab.classList.contains("active"))ab.click();document.getElementById("searchInput").focus();return;}
+      wn.style.display = "flex";
+      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);fetch("/api/notes").then(function(r){return r.json()}).then(function(d){ta.value=d.text||""});sb.onclick=async function(){st.textContent="Salvando...";var r=await fetch("/api/notes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ta.value})});st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";};}
+      else if(a==="calc"){wt.textContent="Calculadora";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";eb.onclick=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Use: num operador num (ex: 15*4)";return;}var a=Number(m.at(1)),op=m.at(2),b=Number(m.at(3));var r=op==="+"?a+b:op==="-"?a-b:op==="*"?a*b:(b!==0?a/b:"Div/0");rd.textContent="= "+r;};wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
+      else if(a==="sys"){wt.textContent="Sistema";wb.textContent="Consultando...";var r=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:"status sistema"})});var d=await r.json();wb.style.whiteSpace="pre-line";wb.textContent=d.text;}
+      else if(a==="cal"){wt.textContent="Data e Hora";wb.textContent=new Date().toLocaleString("pt-BR");}
+      else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (/opt/xiqi)":"Terminal";var ki=document.createElement("input");ki.type="password";ki.value=window._tk||"";ki.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px";var pr=document.createElement("pre");pr.style.cssText="background:#0f172a;color:#4ade80;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Chave Mestra acima -> Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls -lh /opt/xiqi/apps /opt/xiqi/config":"";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace";var rb=document.createElement("button");rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";rb.onclick=async function(){window._tk=ki.value;var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json();pr.textContent=d.output||"(ok)"};wb.appendChild(ki);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}
+      else if(a==="about"){wt.textContent="Sobre";wb.textContent="XIQI OS Core x86_64 — Corporação Engecema";}
+    };
+  });
+})();
+</script>
+
+</body>
+</html>

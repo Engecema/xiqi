@@ -1,0 +1,16 @@
+{
+  "name": "xiqi-os",
+  "version": "1.0.0",
+  "description": "Sistema Operacional corporativo ultraleve XIQI OS - Engecema",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "lint": "node -c server.js",
+    "build": "echo 'XIQI OS Build Ready'",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^3.3.0",
+    "express": "^5.3.0"
+  }
+}
