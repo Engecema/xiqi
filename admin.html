@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>XIQI OS — Admin</title>
 <style>
 body{font-family:sans-serif;background:#f4f4f5;color:#18181b;margin:0;padding:16px}
@@ -21,7 +22,10 @@ footer{text-align:center;margin-top:20px;font-size:12px;color:#52525b;font-weigh
 </head>
 <body>
 <div class="box" id="authBox">
-  <h1>XIQI OS — Administração</h1>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h1 style="margin:0">XIQI OS — Administração</h1>
+    <a href="/" style="font-size:12px;color:#2563eb;text-decoration:none;font-weight:600">← Voltar</a>
+  </div>
   <div class="nav">
     <button type="button" id="t1" class="on">Login</button>
     <button type="button" id="t2">Cadastrar Admin</button>
@@ -99,7 +103,12 @@ $("btnReset").onclick = async () => {
   const r = await fetch("/api/admin/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: $("fEmail").value, masterKey: $("fKey").value, newPassword: $("fPass").value }) });
   const d = await r.json(); $("m3").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m3").textContent = r.ok ? "Senha alterada!" : (d.error || "Erro");
 };
-$("btnOut").onclick = () => { tk = ""; $("lPass").value = ""; $("panelBox").className = "box hide"; $("authBox").className = "box"; };
+$("btnOut").onclick = async () => {
+  if (tk) {
+    try { await fetch("/api/admin/logout", { method: "POST", headers: { "x-admin-key": tk } }); } catch (e) {}
+  }
+  tk = ""; $("lPass").value = ""; $("panelBox").className = "box hide"; $("authBox").className = "box";
+};
 </script>
 </body>
 </html>
