@@ -169,6 +169,8 @@
     .auth-btn-group {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
       gap: 8px;
     }
 
@@ -195,7 +197,7 @@
       position: absolute;
       top: calc(100% + 10px);
       right: 0;
-      width: 340px;
+      width: 375px;
       max-width: calc(100vw - 28px);
       background-color: var(--bg-page);
       border: 1px solid var(--border-light);
@@ -207,7 +209,7 @@
 
     .auth-tabs {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 4px;
       background-color: var(--bg-soft);
       border: 1px solid var(--border-light);
@@ -220,9 +222,9 @@
       background: transparent;
       border: none;
       border-radius: 6px;
-      padding: 7px 10px;
+      padding: 7px 6px;
       font-family: inherit;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: var(--text-muted);
       cursor: pointer;
@@ -271,6 +273,74 @@
       font-size: 12px;
       color: var(--text-subtle);
       margin-bottom: 12px;
+    }
+
+    .auth-aux-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+
+    .auth-text-link {
+      background: none;
+      border: none;
+      padding: 2px 0;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .auth-text-link:hover {
+      text-decoration: underline;
+    }
+
+    .form-success {
+      font-size: 12px;
+      color: #16a34a;
+      min-height: 16px;
+      margin: 4px 0 8px;
+    }
+
+    .recovery-box {
+      background-color: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .recovery-box-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin: 0 0 6px;
+    }
+
+    .recovery-box-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: 0 0 10px;
+    }
+
+    .recovery-code-display {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      background-color: var(--bg-page);
+      border: 1px solid var(--border-medium);
+      border-radius: 6px;
+      padding: 8px 10px;
+      text-align: center;
+      letter-spacing: 0.04em;
+      user-select: all;
+      margin-bottom: 10px;
+    }
+
+    .recovery-actions {
+      display: flex;
+      gap: 8px;
     }
 
     /* =====================================================================
@@ -928,6 +998,7 @@
       <div id="guestAuthButtons" class="auth-btn-group">
         <button type="button" class="btn-header-login" id="openLoginTabBtn">Fazer Login</button>
         <button type="button" class="btn-header-register" id="openRegisterTabBtn">Cadastrar Usuário</button>
+        <button type="button" class="btn-header-login" id="openForgotTopBtn">Esqueci minha senha</button>
       </div>
 
       <div id="loggedUserControls" class="auth-btn-group hidden">
@@ -941,7 +1012,8 @@
       <div class="auth-popover hidden" id="authPopover" role="dialog" aria-label="Acesso e cadastro de usuário">
         <div class="auth-tabs" role="tablist">
           <button type="button" class="auth-tab-btn active" id="tabBtnLogin" role="tab" aria-selected="true">Fazer Login</button>
-          <button type="button" class="auth-tab-btn" id="tabBtnRegister" role="tab" aria-selected="false">Cadastro de Usuário</button>
+          <button type="button" class="auth-tab-btn" id="tabBtnRegister" role="tab" aria-selected="false">Cadastrar</button>
+          <button type="button" class="auth-tab-btn" id="tabBtnReset" role="tab" aria-selected="false">Esqueci Senha</button>
         </div>
 
         <div id="loginTabPanel">
@@ -958,6 +1030,9 @@
             <div class="form-error" id="loginError"></div>
             <button type="submit" class="btn-primary btn-full">Entrar</button>
           </form>
+          <div class="auth-aux-row">
+            <button type="button" class="auth-text-link" id="openResetTabBtn">Esqueci minha senha</button>
+          </div>
         </div>
 
         <div id="registerTabPanel" class="hidden">
@@ -977,6 +1052,41 @@
             <div class="form-error" id="registerError"></div>
             <button type="submit" class="btn-primary btn-full">Cadastrar e Entrar</button>
           </form>
+        </div>
+
+        <div id="resetTabPanel" class="hidden">
+          <form id="resetPasswordForm" autocomplete="off">
+            <div class="form-group">
+              <label class="form-label" for="resetIdentifier">E-mail ou Usuário Corporativo</label>
+              <input class="form-input" id="resetIdentifier" type="text" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="resetRecoveryCode">Código de Recuperação ou Chave Mestra</label>
+              <input class="form-input" id="resetRecoveryCode" type="password" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="resetNewPin">Nova Senha ou PIN</label>
+              <input class="form-input" id="resetNewPin" type="password" required minlength="4">
+            </div>
+            <div class="form-error" id="resetError"></div>
+            <div class="form-success" id="resetSuccess"></div>
+            <button type="submit" class="btn-primary btn-full">Redefinir Senha</button>
+          </form>
+          <div class="auth-aux-row">
+            <button type="button" class="auth-text-link" id="backToLoginFromResetBtn">Voltar para Fazer Login</button>
+          </div>
+        </div>
+
+        <div id="recoveryCodeNotice" class="hidden">
+          <div class="recovery-box">
+            <p class="recovery-box-title">Código de Recuperação Pessoal</p>
+            <p class="recovery-box-desc">Guarde este código em local seguro. Ele permite redefinir sua senha caso você a esqueça.</p>
+            <div class="recovery-code-display" id="recoveryCodeValue"></div>
+            <div class="recovery-actions">
+              <button type="button" class="btn-secondary" id="copyRecoveryCodeBtn" style="flex:1">Copiar</button>
+              <button type="button" class="btn-primary" id="closeRecoveryNoticeBtn" style="flex:1">Concluir</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1268,27 +1378,50 @@
       var authPopover = document.getElementById('authPopover');
       var tabBtnLogin = document.getElementById('tabBtnLogin');
       var tabBtnRegister = document.getElementById('tabBtnRegister');
+      var tabBtnReset = document.getElementById('tabBtnReset');
       var loginTabPanel = document.getElementById('loginTabPanel');
       var registerTabPanel = document.getElementById('registerTabPanel');
+      var resetTabPanel = document.getElementById('resetTabPanel');
+      var recoveryCodeNotice = document.getElementById('recoveryCodeNotice');
 
       function setAuthTab(mode) {
         var isLogin = mode === 'login';
+        var isRegister = mode === 'register';
+        var isReset = mode === 'reset';
+        var isNotice = mode === 'notice';
+
         tabBtnLogin.classList.toggle('active', isLogin);
-        tabBtnRegister.classList.toggle('active', !isLogin);
+        tabBtnRegister.classList.toggle('active', isRegister);
+        tabBtnReset.classList.toggle('active', isReset);
         tabBtnLogin.setAttribute('aria-selected', isLogin ? 'true' : 'false');
-        tabBtnRegister.setAttribute('aria-selected', !isLogin ? 'true' : 'false');
+        tabBtnRegister.setAttribute('aria-selected', isRegister ? 'true' : 'false');
+        tabBtnReset.setAttribute('aria-selected', isReset ? 'true' : 'false');
+
         loginTabPanel.classList.toggle('hidden', !isLogin);
-        registerTabPanel.classList.toggle('hidden', isLogin);
+        registerTabPanel.classList.toggle('hidden', !isRegister);
+        resetTabPanel.classList.toggle('hidden', !isReset);
+        recoveryCodeNotice.classList.toggle('hidden', !isNotice);
+
         document.getElementById('loginError').textContent = '';
         document.getElementById('registerError').textContent = '';
+        document.getElementById('resetError').textContent = '';
+        document.getElementById('resetSuccess').textContent = '';
 
         if (isLogin) {
           selectedLoginUserId = '';
           renderSavedAccountChips();
           document.getElementById('loginIdentifier').focus();
-        } else {
+        } else if (isRegister) {
           document.getElementById('regFullName').focus();
+        } else if (isReset) {
+          document.getElementById('resetIdentifier').focus();
         }
+      }
+
+      function showRecoveryNotice(code) {
+        document.getElementById('recoveryCodeValue').textContent = code || '';
+        document.getElementById('copyRecoveryCodeBtn').textContent = 'Copiar';
+        setAuthTab('notice');
       }
 
       function openAuthPopover(mode) {
@@ -1361,6 +1494,11 @@
         openAuthPopover('register');
       });
 
+      document.getElementById('openForgotTopBtn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        openAuthPopover('reset');
+      });
+
       document.getElementById('switchAccountTopBtn').addEventListener('click', function (e) {
         e.stopPropagation();
         openAuthPopover('login');
@@ -1377,6 +1515,7 @@
 
       tabBtnLogin.addEventListener('click', function () { setAuthTab('login'); });
       tabBtnRegister.addEventListener('click', function () { setAuthTab('register'); });
+      tabBtnReset.addEventListener('click', function () { setAuthTab('reset'); });
 
       document.addEventListener('click', function (e) {
         if (!document.getElementById('authHeaderWrap').contains(e.target)) {
@@ -1449,8 +1588,72 @@
           store.users = Array.isArray(data.users) ? data.users : store.users;
           store.session = sanitizeSession(data.session);
           document.getElementById('registerForm').reset();
-          closeAuthPopover();
           renderAll();
+          if (data.recoveryCode) {
+            showRecoveryNotice(data.recoveryCode);
+          } else {
+            closeAuthPopover();
+          }
+        } catch (err) {
+          errEl.textContent = 'Erro de comunicação com o servidor.';
+        }
+      });
+
+      document.getElementById('openResetTabBtn').addEventListener('click', function () {
+        var curId = document.getElementById('loginIdentifier').value.trim();
+        if (curId) document.getElementById('resetIdentifier').value = curId;
+        setAuthTab('reset');
+      });
+
+      document.getElementById('backToLoginFromResetBtn').addEventListener('click', function () {
+        setAuthTab('login');
+      });
+
+      document.getElementById('copyRecoveryCodeBtn').addEventListener('click', function () {
+        var code = document.getElementById('recoveryCodeValue').textContent;
+        if (navigator.clipboard && code) {
+          navigator.clipboard.writeText(code).then(function () {
+            document.getElementById('copyRecoveryCodeBtn').textContent = 'Copiado!';
+          }).catch(function () {});
+        }
+      });
+
+      document.getElementById('closeRecoveryNoticeBtn').addEventListener('click', function () {
+        closeAuthPopover();
+      });
+
+      document.getElementById('resetPasswordForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var identifier = document.getElementById('resetIdentifier').value.trim();
+        var recoveryCode = document.getElementById('resetRecoveryCode').value.trim();
+        var newPin = document.getElementById('resetNewPin').value;
+        var errEl = document.getElementById('resetError');
+        var okEl = document.getElementById('resetSuccess');
+        errEl.textContent = '';
+        okEl.textContent = '';
+
+        if (!identifier || !recoveryCode || newPin.length < 4) {
+          errEl.textContent = 'Informe usuário, código de recuperação/chave mestra e nova senha (mínimo 4 caracteres).';
+          return;
+        }
+
+        try {
+          var resp = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: identifier, recoveryCode: recoveryCode, newPin: newPin })
+          });
+          var data = await resp.json().catch(function () { return {}; });
+          if (!resp.ok) {
+            errEl.textContent = (data && data.error) ? String(data.error) : 'Não foi possível redefinir a senha.';
+            return;
+          }
+          document.getElementById('resetPasswordForm').reset();
+          if (data.recoveryCode) {
+            showRecoveryNotice(data.recoveryCode);
+          } else {
+            okEl.textContent = 'Senha redefinida com sucesso!';
+          }
         } catch (err) {
           errEl.textContent = 'Erro de comunicação com o servidor.';
         }
@@ -1854,10 +2057,10 @@
         if (!e.data || typeof e.data !== 'object') return;
         if (e.data.type === 'xiqi-open-url' && e.origin === window.location.origin && isSafeHttpUrl(e.data.url)) {
           openUrlInNewTab(e.data.url, e.data.title || extractDomain(e.data.url));
-        } else if (e.data.type === 'xiqi-proxy-navigate' && isSafeHttpUrl(e.data.url)) {
+        } else if (e.data.type === 'xiqi-proxy-navigate' && /^https?:\/\//i.test(String(e.data.url || ''))) {
           var session = getActiveSession();
           var tab = session.tabs.find(function (t) { return t.id === session.activeTabId; });
-          if (tab && tab.type === 'web') {
+          if (tab && tab.type === 'web' && tab.useProxy) {
             if (!Array.isArray(tab.history)) tab.history = [tab.url];
             tab.history.push(e.data.url);
             tab.historyIndex = tab.history.length - 1;
@@ -1870,7 +2073,7 @@
         } else if (e.data.type === 'xiqi-proxy-loaded' && e.data.title) {
           var sess = getActiveSession();
           var activeT = sess.tabs.find(function (t) { return t.id === sess.activeTabId; });
-          if (activeT && activeT.type === 'web') {
+          if (activeT && activeT.type === 'web' && activeT.useProxy) {
             activeT.title = String(e.data.title).slice(0, 48);
             renderMiniTabs(sess);
           }
@@ -2133,7 +2336,7 @@
       }
       wn.style.display = "flex";
       if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);fetch("/api/notes").then(function(r){return r.json()}).then(function(d){ta.value=d.text||""});sb.onclick=async function(){st.textContent="Salvando...";var r=await fetch("/api/notes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ta.value})});st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";};}
-      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Use: num operador num (ex: 15*4)";return;}var numA=Number(m.at(1)),op=m.at(2),numB=Number(m.at(3));var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
+      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m.at(1)),op=m.at(2),numB=Number(m.at(3));var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
       else if(a==="sys"){wt.textContent="Sistema — XIQI OS";wb.textContent="Consultando...";var r=await fetch("/api/system");var d=await r.json();wb.style.whiteSpace="pre-line";wb.textContent=d.text||"XIQI OS ativo.";}
       else if(a==="cal"){wt.textContent="Data e Hora";wb.textContent=new Date().toLocaleString("pt-BR");}
       else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (XIQI OS)":"Terminal (Console Seguro)";var kl=document.createElement("label");kl.textContent="Chave Mestra";kl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ki=document.createElement("input");ki.type="password";ki.autocomplete="off";ki.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px";var pr=document.createElement("pre");pr.style.cssText="background:#0f172a;color:#4ade80;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Informe a Chave Mestra acima e clique em Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls":"help";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace";var rb=document.createElement("button");rb.type="button";rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";var runCmd=async function(){var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json().catch(function(){return {output:"Erro de comunicação"}});pr.textContent=d.output||"(ok)"};rb.onclick=runCmd;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCmd();}});wb.appendChild(kl);wb.appendChild(ki);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}

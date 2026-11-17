@@ -66,9 +66,26 @@ function getMasterKey() {
 }
 
 function safeEq(a, b) {
-  const ba = Buffer.from(String(a || ''));
-  const bb = Buffer.from(String(b || ''));
-  return ba.length > 0 && ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+  const sa = String(a || '');
+  const sb = String(b || '');
+  if (!sa || !sb) return false;
+  const ha = crypto.createHash('sha256').update(sa).digest();
+  const hb = crypto.createHash('sha256').update(sb).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function safeJsonForScript(val) {
+  return JSON.stringify(val)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function generateRecoveryCode() {
+  const raw = crypto.randomBytes(8).toString('hex').toUpperCase();
+  return 'XIQI-' + raw.slice(0, 4) + '-' + raw.slice(4, 8) + '-' + raw.slice(8, 12) + '-' + raw.slice(12, 16);
 }
 
 function escHtml(str) {
@@ -133,6 +150,10 @@ async function validatePublicHttpUrl(rawUrl) {
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return { ok: false, reason: 'Protocolo não permitido.' };
+  }
+  const allowedPorts = new Set(['', '80', '443', '8080', '8443']);
+  if (!allowedPorts.has(parsed.port)) {
+    return { ok: false, reason: 'Porta de destino não permitida pelo Proxy XIQI.' };
   }
   if (parsed.username || parsed.password) {
     return { ok: false, reason: 'Credenciais embutidas na URL não são permitidas.' };
@@ -201,6 +222,30 @@ async function safeExternalFetch(rawUrl, options = {}) {
 /* =====================================================================
    RATE LIMITING, BLOQUEIO CONTRA FORCA BRUTA E SANITIZACAO
    ===================================================================== */
+function pruneMapsIfNeeded() {
+  const now = Date.now();
+  if (activeUserTokens.size > 5000) {
+    for (const [k, v] of activeUserTokens.entries()) {
+      if (!v || now > v.exp) activeUserTokens.delete(k);
+    }
+  }
+  if (activeAdminTokens.size > 1000) {
+    for (const [k, exp] of activeAdminTokens.entries()) {
+      if (!exp || now > exp) activeAdminTokens.delete(k);
+    }
+  }
+  if (loginFails.size > 5000) {
+    for (const [k, v] of loginFails.entries()) {
+      if (!v || now > v.until) loginFails.delete(k);
+    }
+  }
+  if (rateBuckets.size > 10000) {
+    for (const [k, v] of rateBuckets.entries()) {
+      if (!v || now > v.resetAt) rateBuckets.delete(k);
+    }
+  }
+}
+
 function isBlocked(key) {
   const rec = loginFails.get(key);
   if (!rec) return false;
@@ -212,6 +257,7 @@ function isBlocked(key) {
 }
 
 function markFail(key) {
+  pruneMapsIfNeeded();
   const rec = loginFails.get(key) || { count: 0, until: 0 };
   rec.count += 1;
   rec.until = Date.now() + 10 * 60 * 1000;
@@ -220,6 +266,7 @@ function markFail(key) {
 
 function rateLimit(bucketName, windowMs, maxRequests) {
   return (req, res, next) => {
+    pruneMapsIfNeeded();
     const ip = req.ip || 'local';
     const key = bucketName + ':' + ip;
     const now = Date.now();
@@ -251,6 +298,29 @@ function stripProtoPollution(val, depth = 0) {
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '128kb' }));
+
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    return next();
+  }
+  const secFetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (secFetchSite === 'cross-site') {
+    return res.status(403).json({ error: 'Requisição cross-site bloqueada por política CSRF.' });
+  }
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const originHost = new URL(origin).host.toLowerCase();
+      const expectedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+      if (!expectedHost || originHost !== expectedHost) {
+        return res.status(403).json({ error: 'Origem não autorizada para esta operação.' });
+      }
+    } catch {
+      return res.status(403).json({ error: 'Cabeçalho Origin inválido.' });
+    }
+  }
+  next();
+});
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -370,12 +440,17 @@ function createDefaultGuestSession() {
   };
 }
 
+function isAllowedInternalOrPublicUrl(url) {
+  const s = String(url || '').trim();
+  return isSafeHttpUrl(s) || s.startsWith('/api/search?') || s.startsWith('/api/proxy?');
+}
+
 function sanitizeSessionPayload(rawSession) {
   const s = stripProtoPollution(rawSession || {});
   const validEngines = new Set(['google', 'duckduckgo', 'bing']);
   const tabs = Array.isArray(s.tabs)
     ? s.tabs
-        .filter(t => t && typeof t === 'object' && (t.type === 'newtab' || (t.type === 'web' && (isSafeHttpUrl(t.url) || String(t.url || '').startsWith('/api/')))))
+        .filter(t => t && typeof t === 'object' && (t.type === 'newtab' || (t.type === 'web' && isAllowedInternalOrPublicUrl(t.url))))
         .slice(0, 20)
         .map(t => ({
           id: String(t.id || 'tab-' + Date.now()).slice(0, 64),
@@ -385,7 +460,7 @@ function sanitizeSessionPayload(rawSession) {
           useProxy: Boolean(t.useProxy),
           embedReason: String(t.embedReason || '').slice(0, 140),
           history: Array.isArray(t.history)
-            ? t.history.filter(u => isSafeHttpUrl(u) || String(u || '').startsWith('/api/')).slice(-20)
+            ? t.history.filter(u => isAllowedInternalOrPublicUrl(u)).slice(-20)
             : [],
           historyIndex: typeof t.historyIndex === 'number' ? Math.max(0, t.historyIndex) : 0
         }))
@@ -469,7 +544,6 @@ app.get('/api/store', (req, res) => {
     users: users.map(u => ({
       id: u.id,
       name: u.name,
-      identifier: u.identifier,
       color: u.color || '#2563eb'
     })),
     session: activeSess || guestSess,
@@ -478,7 +552,7 @@ app.get('/api/store', (req, res) => {
   });
 });
 
-app.post('/api/store', (req, res) => {
+app.post('/api/store', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
   const inc = stripProtoPollution(req.body || {});
   const authUserId = getAuthenticatedUserId(req);
   const cur = readJson(PROFILES_PATH, {
@@ -537,6 +611,9 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
   const palette = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#0d9488', '#dc2626'];
   const salt = crypto.randomBytes(16).toString('hex');
   const pinHash = hashSecret(pin, salt);
+  const recoveryCode = generateRecoveryCode();
+  const recoverySalt = crypto.randomBytes(16).toString('hex');
+  const recoveryHash = hashSecret(recoveryCode, recoverySalt);
   const userId = 'user-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex');
   const initialTabId = 'tab-' + Date.now();
   const newUser = {
@@ -545,6 +622,8 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
     identifier,
     salt,
     pinHash,
+    recoverySalt,
+    recoveryHash,
     hashAlgo: 'scrypt',
     color: palette[cur.users.length % palette.length],
     createdAt: new Date().toISOString(),
@@ -574,16 +653,17 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
   res.json({
     ok: true,
     token,
+    recoveryCode,
     activeUser: { id: newUser.id, name: newUser.name, identifier: newUser.identifier, color: newUser.color },
-    users: cur.users.map(u => ({ id: u.id, name: u.name, identifier: u.identifier, color: u.color || '#2563eb' })),
+    users: cur.users.map(u => ({ id: u.id, name: u.name, color: u.color || '#2563eb' })),
     session: newUser.session,
     user: { id: newUser.id, name: newUser.name, identifier: newUser.identifier, color: newUser.color, session: newUser.session }
   });
 });
 
 app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) => {
-  const ip = 'user:' + (req.ip || 'local');
-  if (isBlocked(ip)) {
+  const ipKey = 'user:' + (req.ip || 'local');
+  if (isBlocked(ipKey)) {
     return res.status(429).json({ error: 'Muitas tentativas inválidas. Bloqueado por 10 minutos.' });
   }
   const body = stripProtoPollution(req.body || {});
@@ -594,6 +674,11 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
     return res.status(400).json({ error: 'Informe identificador e senha/PIN.' });
   }
 
+  const acctKey = 'acct:' + (userIdParam || identifier.toLowerCase());
+  if (isBlocked(acctKey)) {
+    return res.status(429).json({ error: 'Conta temporariamente bloqueada após múltiplas tentativas inválidas. Aguarde 10 minutos.' });
+  }
+
   const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
   const users = Array.isArray(cur.users) ? cur.users : [];
   const user = userIdParam
@@ -601,11 +686,13 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
     : users.find(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase());
 
   if (!user || !verifyUserPin(user, pin)) {
-    markFail(ip);
+    markFail(ipKey);
+    markFail(acctKey);
     return res.status(401).json({ error: 'Credenciais inválidas.' });
   }
 
-  loginFails.delete(ip);
+  loginFails.delete(ipKey);
+  loginFails.delete(acctKey);
 
   // Migra hash legado automaticamente para scrypt
   if (user.hashAlgo !== 'scrypt') {
@@ -630,7 +717,7 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
       identifier: user.identifier,
       color: user.color || '#2563eb'
     },
-    users: users.map(u => ({ id: u.id, name: u.name, identifier: u.identifier, color: u.color || '#2563eb' })),
+    users: users.map(u => ({ id: u.id, name: u.name, color: u.color || '#2563eb' })),
     session: userSession,
     user: {
       id: user.id,
@@ -642,6 +729,68 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
   });
 });
 
+app.post('/api/auth/reset-password', rateLimit('auth_reset', 60 * 1000, 10), (req, res) => {
+  const ipKey = 'reset:' + (req.ip || 'local');
+  if (isBlocked(ipKey)) {
+    return res.status(429).json({ error: 'Muitas tentativas inválidas. Bloqueado por 10 minutos.' });
+  }
+  const body = stripProtoPollution(req.body || {});
+  const identifier = String(body.identifier || '').trim();
+  const recoveryCode = String(body.recoveryCode || '').trim();
+  const newPin = String(body.newPin || '');
+
+  if (!identifier || !recoveryCode || newPin.length < 4 || newPin.length > 128) {
+    return res.status(400).json({ error: 'Preencha usuário, código de recuperação/chave mestra e nova senha (mínimo 4 caracteres).' });
+  }
+
+  const acctKey = 'reset_acct:' + identifier.toLowerCase();
+  if (isBlocked(acctKey)) {
+    return res.status(429).json({ error: 'Muitas tentativas inválidas para esta conta. Aguarde 10 minutos.' });
+  }
+
+  const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
+  const users = Array.isArray(cur.users) ? cur.users : [];
+  const user = users.find(u =>
+    String(u.identifier || '').toLowerCase() === identifier.toLowerCase() ||
+    String(u.name || '').toLowerCase() === identifier.toLowerCase()
+  );
+
+  const isMasterValid = safeEq(recoveryCode, getMasterKey());
+  const isUserCodeValid = Boolean(
+    user &&
+    user.recoverySalt &&
+    user.recoveryHash &&
+    safeEq(hashSecret(recoveryCode.toUpperCase(), user.recoverySalt), user.recoveryHash)
+  );
+
+  if (!user || (!isMasterValid && !isUserCodeValid)) {
+    markFail(ipKey);
+    markFail(acctKey);
+    return res.status(403).json({ error: 'Usuário ou código de recuperação/chave mestra inválido.' });
+  }
+
+  loginFails.delete(ipKey);
+  loginFails.delete(acctKey);
+
+  const newSalt = crypto.randomBytes(16).toString('hex');
+  user.salt = newSalt;
+  user.pinHash = hashSecret(newPin, newSalt);
+  user.hashAlgo = 'scrypt';
+
+  const nextRecoveryCode = generateRecoveryCode();
+  const nextRecoverySalt = crypto.randomBytes(16).toString('hex');
+  user.recoverySalt = nextRecoverySalt;
+  user.recoveryHash = hashSecret(nextRecoveryCode, nextRecoverySalt);
+
+  // Revoga todas as sessões anteriores do usuário após troca de senha
+  for (const [tok, rec] of activeUserTokens.entries()) {
+    if (rec && rec.userId === user.id) activeUserTokens.delete(tok);
+  }
+
+  writeJson(PROFILES_PATH, cur);
+  res.json({ ok: true, recoveryCode: nextRecoveryCode });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   const cookies = parseCookies(req);
   const token = String(req.headers['x-user-token'] || cookies.xiqi_session || '').trim();
@@ -651,7 +800,7 @@ app.post('/api/auth/logout', (req, res) => {
   const users = Array.isArray(cur.users) ? cur.users : [];
   res.json({
     ok: true,
-    users: users.map(u => ({ id: u.id, name: u.name, identifier: u.identifier, color: u.color || '#2563eb' })),
+    users: users.map(u => ({ id: u.id, name: u.name, color: u.color || '#2563eb' })),
     session: cur.guestSession || createDefaultGuestSession()
   });
 });
@@ -732,14 +881,26 @@ app.post('/api/admin/reset-password', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/admin/users', (req, res) => {
-  if (!checkAdmin(req)) return res.status(403).json({ error: 'Negado.' });
+app.get('/api/admin/users', rateLimit('admin_api', 60 * 1000, 30), (req, res) => {
+  const ip = 'admin_api:' + (req.ip || 'local');
+  if (isBlocked(ip)) return res.status(429).json({ error: 'Bloqueado por 10 min após 5 falhas.' });
+  if (!checkAdmin(req)) {
+    markFail(ip);
+    return res.status(403).json({ error: 'Negado.' });
+  }
+  loginFails.delete(ip);
   const d = readJson(PROFILES_PATH, { users: [] });
   res.json({ users: (d.users || []).map(u => ({ id: u.id, name: u.name, identifier: u.identifier })) });
 });
 
-app.delete('/api/admin/users/:id', (req, res) => {
-  if (!checkAdmin(req)) return res.status(403).json({ error: 'Negado.' });
+app.delete('/api/admin/users/:id', rateLimit('admin_api', 60 * 1000, 30), (req, res) => {
+  const ip = 'admin_api:' + (req.ip || 'local');
+  if (isBlocked(ip)) return res.status(429).json({ error: 'Bloqueado por 10 min após 5 falhas.' });
+  if (!checkAdmin(req)) {
+    markFail(ip);
+    return res.status(403).json({ error: 'Negado.' });
+  }
+  loginFails.delete(ip);
   const targetId = String(req.params.id || '');
   const d = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
   d.users = (d.users || []).filter(u => u.id !== targetId);
@@ -1070,10 +1231,30 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
     }
 
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-    const rawBuf = Buffer.from(await upstream.arrayBuffer());
-    if (rawBuf.length > MAX_PROXY_BYTES) {
-      return res.status(413).type('text/plain').send('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
+    const chunks = [];
+    let totalBytes = 0;
+    if (upstream.body && typeof upstream.body.getReader === 'function') {
+      const reader = upstream.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalBytes += value.byteLength;
+          if (totalBytes > MAX_PROXY_BYTES) {
+            try { await reader.cancel(); } catch {}
+            return res.status(413).type('text/plain').send('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
+          }
+          chunks.push(Buffer.from(value));
+        }
+      }
+    } else {
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      if (buf.length > MAX_PROXY_BYTES) {
+        return res.status(413).type('text/plain').send('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
+      }
+      chunks.push(buf);
     }
+    const rawBuf = Buffer.concat(chunks);
 
     if (contentType.toLowerCase().includes('text/html')) {
       let html = rawBuf.toString('utf8');
@@ -1084,13 +1265,15 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
 
       const parsedFinal = new URL(finalUrl);
       const baseTag = `<base href="${escHtml(parsedFinal.href)}">`;
+      const safeFinalUrlJson = safeJsonForScript(finalUrl);
+      const safeHostnameJson = safeJsonForScript(parsedFinal.hostname);
       const bridgeScript = `<script>
 (function(){
   try {
     window.parent.postMessage({
       type: 'xiqi-proxy-loaded',
-      url: ${JSON.stringify(finalUrl)},
-      title: document.title || ${JSON.stringify(parsedFinal.hostname)}
+      url: ${safeFinalUrlJson},
+      title: document.title || ${safeHostnameJson}
     }, '*');
   } catch(e){}
   document.addEventListener('click', function(ev) {
@@ -1099,7 +1282,7 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
     var href = a.getAttribute('href') || '';
     if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || a.hasAttribute('download')) return;
     try {
-      var abs = new URL(href, ${JSON.stringify(finalUrl)}).href;
+      var abs = new URL(href, ${safeFinalUrlJson}).href;
       if (/^https?:/i.test(abs)) {
         ev.preventDefault();
         var nextProxy = '/api/proxy?url=' + encodeURIComponent(abs);
@@ -1112,8 +1295,8 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
     var f = ev.target;
     if (!f || (f.method && f.method.toLowerCase() !== 'get')) return;
     try {
-      var action = f.getAttribute('action') || ${JSON.stringify(finalUrl)};
-      var abs = new URL(action, ${JSON.stringify(finalUrl)});
+      var action = f.getAttribute('action') || ${safeFinalUrlJson};
+      var abs = new URL(action, ${safeFinalUrlJson});
       var fd = new FormData(f);
       fd.forEach(function(v, k){ abs.searchParams.set(k, String(v)); });
       ev.preventDefault();
@@ -1341,7 +1524,7 @@ app.get('/api/notes', (req, res) => {
   res.json({ text: (cur.guestSession && cur.guestSession.notes) || '' });
 });
 
-app.post('/api/notes', (req, res) => {
+app.post('/api/notes', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
   const authUserId = getAuthenticatedUserId(req);
   const text = String((req.body && req.body.text) || '').slice(0, 15000);
   const cur = readJson(PROFILES_PATH, {
