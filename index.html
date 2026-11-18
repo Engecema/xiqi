@@ -2454,6 +2454,7 @@
           openUrlInNewTab(e.data.url, e.data.title || extractDomain(e.data.url));
         } else if (e.data.type === 'xiqi-proxy-navigate' && typeof e.data.url === 'string' && /^https?:\/\//i.test(e.data.url) && isSafeHttpUrl(e.data.url)) {
           var safeNavUrl = e.data.url.slice(0, 2000);
+          if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|169\.254\.|\[::1\]|0\.0\.0\.0|xiqios\b)/i.test(safeNavUrl)) return;
           var session = getActiveSession();
           var tab = session.tabs.find(function (t) { return t.id === session.activeTabId; });
           if (tab && tab.type === 'web' && tab.useProxy) {
@@ -2738,7 +2739,7 @@
         statusEl.style.color="#2563eb";
         statusEl.textContent="Baixando atualizações e reiniciando serviço xiqios...";
         try{
-          var r=await fetch("/api/system/update",{method:"POST"});
+          var r=await fetch("/api/system/update",{method:"POST",headers:{"X-Xiqi-Action":"1"}});
           var d=await r.json().catch(function(){return {};});
           if(!r.ok){
             statusEl.style.color="#dc2626";
@@ -2785,7 +2786,7 @@
       st.textContent=isReboot?"Enviando comando de reinicialização...":"Enviando comando de desligamento...";
       try{
         var ep=isReboot?"/api/system/reboot":"/api/system/shutdown";
-        var r=await fetch(ep,{method:"POST"});
+        var r=await fetch(ep,{method:"POST",headers:{"X-Xiqi-Action":"1"}});
         var d=await r.json().catch(function(){return {};});
         if(!r.ok){
           st.style.color="#dc2626";

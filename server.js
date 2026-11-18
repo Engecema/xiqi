@@ -8,10 +8,10 @@ const net = require('net');
 const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 
 const app = express();
-app.set('trust proxy', 1);
+app.set('trust proxy', 'loopback');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 const INDEX_PATH = path.join(__dirname, 'index.html');
@@ -500,7 +500,8 @@ app.use('/api', (req, res, next) => {
   if (secFetchSite === 'cross-site') {
     return res.status(403).json({ error: 'Requisição cross-site bloqueada por política CSRF.' });
   }
-  const expectedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+  const forwardedHost = isLocalLoopbackRequest(req) ? req.headers['x-forwarded-host'] : '';
+  const expectedHost = String(forwardedHost || req.headers.host || '').split(',')[0].trim().toLowerCase();
   const origin = req.headers.origin;
   if (origin) {
     try {
@@ -529,15 +530,34 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-DNS-Prefetch-Control', 'off');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+
   if (req.path.startsWith('/api/proxy')) {
     res.setHeader(
       'Content-Security-Policy',
-      'sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox;'
+      "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox;"
     );
-  } else {
+  } else if (req.path.startsWith('/api/search')) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self'; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';"
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';"
+    );
+  } else {
+    const isAdminRoute = req.path === '/admin' || req.path.startsWith('/api/admin');
+    const isLocalHost = /^(localhost|127\.0\.0\.1|xiqios)(:\d+)?$/i.test(String(req.headers.host || '').trim());
+    if (isAdminRoute && isLocalHost) {
+      res.setHeader('X-Frame-Options', 'DENY');
+    } else if (isLocalHost) {
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    }
+    const frameAncestors = isLocalHost
+      ? (isAdminRoute ? "frame-ancestors 'none';" : "frame-ancestors 'self';")
+      : '';
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self'; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';" +
+        (frameAncestors ? ' ' + frameAncestors : '')
     );
   }
   next();
@@ -621,8 +641,10 @@ function clearUserSessionCookie(res, req) {
 
 function getAuthenticatedUserId(req) {
   const cookies = parseCookies(req);
-  const token = String(req.headers['x-user-token'] || cookies.xiqi_session || '').trim();
-  if (!token) return null;
+  const hdrToken = typeof req.headers['x-user-token'] === 'string' ? req.headers['x-user-token'] : '';
+  const cookieToken = typeof cookies.xiqi_session === 'string' ? cookies.xiqi_session : '';
+  const token = (hdrToken || cookieToken).trim();
+  if (!token || token.length > 256) return null;
   const rec = activeUserTokens.get(token);
   if (!rec || Date.now() > rec.exp) {
     activeUserTokens.delete(token);
@@ -833,6 +855,9 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
   });
   if (!Array.isArray(cur.users)) cur.users = [];
 
+  if (cur.users.length >= 200) {
+    return res.status(400).json({ error: 'Limite máximo de contas corporativas atingido.' });
+  }
   if (cur.users.some(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase())) {
     return res.status(409).json({ error: 'Já existe um usuário com este identificador.' });
   }
@@ -976,8 +1001,7 @@ app.post('/api/auth/reset-password', rateLimit('auth_reset', 60 * 1000, 10), (re
   const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
   const users = Array.isArray(cur.users) ? cur.users : [];
   const user = users.find(u =>
-    String(u.identifier || '').toLowerCase() === identifier.toLowerCase() ||
-    String(u.name || '').toLowerCase() === identifier.toLowerCase()
+    String(u.identifier || '').toLowerCase() === identifier.toLowerCase()
   );
 
   const acctKey = 'reset_acct:' + (user ? user.id : identifier.toLowerCase());
@@ -1085,6 +1109,9 @@ app.post('/api/admin/register', rateLimit('admin_mkey', 60 * 1000, 10), (req, re
     return res.status(400).json({ error: 'Preencha Nome, E-mail e Senha (4 a 128 caracteres).' });
   }
   const list = getAdmins();
+  if (list.length >= 50) {
+    return res.status(400).json({ error: 'Limite máximo de administradores atingido.' });
+  }
   if (list.some(a => String(a.email || '').toLowerCase() === em)) {
     return res.status(409).json({ error: 'E-mail já cadastrado.' });
   }
@@ -1412,7 +1439,7 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
             type: 'xiqi-open-url',
             url: link.href,
             title: link.textContent.trim()
-          }, '*');
+          }, window.location.origin);
         }
       });
     });
@@ -1496,14 +1523,14 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
       timeoutMs: 15000
     });
     const safeStatus = (upstream.status >= 200 && upstream.status <= 599) ? upstream.status : 502;
-    const rawContentType = String(upstream.headers.get('content-type') || 'application/octet-stream').replace(/[\r\n]/g, '');
+    const rawContentType = String(upstream.headers.get('content-type') || 'application/octet-stream').replace(/[\x00-\x1f\x7f]/g, '');
     const mimeOnly = rawContentType.split(';')[0].trim().toLowerCase();
     const rawBuf = upstream.bodyBuffer || Buffer.alloc(0);
 
     if (mimeOnly === 'text/html' || mimeOnly === 'application/xhtml+xml') {
       let html = rawBuf.toString('utf8');
       html = html.replace(
-        /<meta[^>]+http-equiv=["']?(?:Content-Security-Policy|X-Frame-Options)["']?[^>]*>/gi,
+        /<meta[^>]+http-equiv=["']?(?:Content-Security-Policy|X-Frame-Options|refresh)["']?[^>]*>/gi,
         ''
       );
       html = html.replace(/<base\b[^>]*>/gi, '');
@@ -1743,36 +1770,32 @@ async function runPrivilegedBinary(candidates, args = [], opts = {}) {
   throw lastErr || new Error('Comando do sistema indisponível.');
 }
 
-function triggerXiqiosRestart() {
-  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
-  const attempts = [
-    ['/sbin/rc-service', ['xiqios', 'restart']],
-    ['rc-service', ['xiqios', 'restart']],
-    ['/usr/bin/systemctl', ['restart', 'xiqios']],
-    ['systemctl', ['restart', 'xiqios']],
-    ['/opt/xiqi/bin/xiqictl', ['restart']],
-    ['/usr/local/bin/xiqictl', ['restart']]
-  ];
-
-  (async () => {
-    for (const [cmd, args] of attempts) {
-      if (cmd.startsWith('/') && !fs.existsSync(cmd)) continue;
+async function ensureValidDnsForUpdate() {
+  try {
+    await dns.lookup('nodejs.org');
+    return;
+  } catch {
+    const resolvContent = 'nameserver 1.1.1.1\nnameserver 9.9.9.9\n';
+    try {
+      fs.writeFileSync('/etc/resolv.conf', resolvContent, { mode: 0o644 });
+    } catch {
       try {
-        if (isRoot) {
-          await execFileAsync(cmd, args, { timeout: 15000 });
-        } else {
-          await execFileAsync('sudo', ['-n', cmd, ...args], { timeout: 15000 });
-        }
-        return;
+        await execFileAsync('sh', ['-c', 'printf "nameserver 1.1.1.1\nnameserver 9.9.9.9\n" | sudo -n tee /etc/resolv.conf >/dev/null'], { timeout: 5000 });
       } catch {
-        // tenta próximo controlador disponível
+        // segue tentativa de atualização mesmo se /etc/resolv.conf for somente leitura
       }
     }
-    process.exit(0);
-  })();
+  }
+}
+
+function hasValidSystemActionHeader(req) {
+  return String(req.headers['x-xiqi-action'] || '') === '1';
 }
 
 app.post('/api/system/update', rateLimit('sys_update', 60 * 1000, 6), async (req, res) => {
+  if (!hasValidSystemActionHeader(req)) {
+    return res.status(403).json({ error: 'Cabeçalho de confirmação ausente para atualizar o sistema.' });
+  }
   if (!canControlSystem(req)) {
     return res.status(403).json({ error: 'Acesso negado para atualizar o sistema.' });
   }
@@ -1787,6 +1810,8 @@ app.post('/api/system/update', rateLimit('sys_update', 60 * 1000, 6), async (req
   }
 
   try {
+    await ensureValidDnsForUpdate();
+
     const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
     const gitFetchArgs = ['-c', 'safe.directory=' + appDir, 'fetch', 'origin', 'main'];
     const gitResetArgs = ['-c', 'safe.directory=' + appDir, 'reset', '--hard', 'origin/main'];
@@ -1811,7 +1836,14 @@ app.post('/api/system/update', rateLimit('sys_update', 60 * 1000, 6), async (req
       message: 'Sistema atualizado com sucesso. Reiniciando serviço xiqios...',
       output: summary
     });
-    setTimeout(triggerXiqiosRestart, 500);
+    setTimeout(() => {
+      try {
+        server.close(() => process.exit(0));
+      } catch {
+        process.exit(0);
+      }
+      setTimeout(() => process.exit(0), 1000).unref();
+    }, 350);
   } catch (err) {
     const detail = String(err && (err.stderr || err.message) || 'Falha ao atualizar via Git.').trim().slice(0, 240);
     res.status(500).json({
@@ -1821,6 +1853,9 @@ app.post('/api/system/update', rateLimit('sys_update', 60 * 1000, 6), async (req
 });
 
 app.post('/api/system/reboot', rateLimit('sys_power', 60 * 1000, 6), (req, res) => {
+  if (!hasValidSystemActionHeader(req)) {
+    return res.status(403).json({ error: 'Cabeçalho de confirmação ausente para reiniciar o computador.' });
+  }
   if (!canControlSystem(req)) {
     return res.status(403).json({ error: 'Acesso negado para reiniciar o computador.' });
   }
@@ -1837,6 +1872,9 @@ app.post('/api/system/reboot', rateLimit('sys_power', 60 * 1000, 6), (req, res) 
 });
 
 app.post('/api/system/shutdown', rateLimit('sys_power', 60 * 1000, 6), (req, res) => {
+  if (!hasValidSystemActionHeader(req)) {
+    return res.status(403).json({ error: 'Cabeçalho de confirmação ausente para desligar o computador.' });
+  }
   if (!canControlSystem(req)) {
     return res.status(403).json({ error: 'Acesso negado para desligar o computador.' });
   }
@@ -1908,12 +1946,12 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), (req, res) => {
           const st = fs.statSync(path.join(CONFIG_DIR, name));
           return `${st.size.toString().padStart(8, ' ')} bytes  ${name}`;
         });
-      return res.json({ output: `Arquivos em ${CONFIG_DIR}:\n` + (files.length ? files.join('\n') : '(vazio)') });
+      return res.json({ output: 'Arquivos de configuração:\n' + (files.length ? files.join('\n') : '(vazio)') });
     } catch {
       return res.json({ output: 'Não foi possível listar o diretório.' });
     }
   }
-  return res.json({ output: `Comando não permitido no console restrito: ${raw}\nDigite "help" para ver os comandos suportados.` });
+  return res.json({ output: 'Comando não permitido no console restrito. Digite "help" para ver os comandos suportados.' });
 });
 
 app.get('/api/notes', (req, res) => {
@@ -1982,14 +2020,76 @@ process.on('uncaughtException', err => {
   console.error('[XIQI OS UncaughtException]', err && err.message ? err.message : err);
 });
 
-const server = app.listen(PORT, HOST, () => console.log('XIQI OS Server listening on port ' + PORT));
+function isPortBusy(port) {
+  return new Promise(resolve => {
+    const sock = net.createConnection({ port, host: '127.0.0.1' });
+    sock.setTimeout(300);
+    sock.once('connect', () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.once('timeout', () => {
+      sock.destroy();
+      resolve(false);
+    });
+    sock.once('error', () => {
+      sock.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function cleanupOrphanServerProcesses(port) {
+  try {
+    const out = execFileSync('pgrep', ['-f', 'node.*server\\.js'], { encoding: 'utf8', timeout: 2000 });
+    for (const line of String(out || '').split(/\s+/)) {
+      const pid = Number(line.trim());
+      if (Number.isInteger(pid) && pid > 1 && pid !== process.pid && pid !== process.ppid) {
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch {
+          // ignora processo já encerrado
+        }
+      }
+    }
+  } catch {
+    // pgrep não encontrado ou nenhum processo correspondente
+  }
+  try {
+    execFileSync('fuser', ['-k', `${port}/tcp`], { timeout: 2000, stdio: 'ignore' });
+  } catch {
+    // fuser indisponível ou porta já livre
+  }
+}
+
+const server = http.createServer(app);
 server.requestTimeout = 30000;
 server.headersTimeout = 15000;
 server.keepAliveTimeout = 5000;
+
+let listenAttempts = 0;
 server.on('error', err => {
+  if (err && err.code === 'EADDRINUSE' && listenAttempts < 3) {
+    listenAttempts += 1;
+    console.warn(`[XIQI OS] Porta ${PORT} ocupada; encerrando processo órfão (tentativa ${listenAttempts}/3)...`);
+    cleanupOrphanServerProcesses(PORT);
+    setTimeout(() => server.listen(PORT, HOST), 1000);
+    return;
+  }
   console.error('[XIQI OS Server Error]', err && err.message ? err.message : err);
   process.exitCode = 1;
 });
+
+async function startServer() {
+  const busy = await isPortBusy(PORT);
+  if (busy) {
+    cleanupOrphanServerProcesses(PORT);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  server.listen(PORT, HOST, () => console.log('XIQI OS Server listening on port ' + PORT));
+}
+
+startServer();
 
 function gracefulShutdown(signal) {
   console.log('XIQI OS Server shutting down (' + signal + ')...');

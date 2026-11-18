@@ -8,13 +8,13 @@
 body{font-family:sans-serif;background:#f4f4f5;color:#18181b;margin:0;padding:16px}
 .box{max-width:420px;margin:28px auto;background:#fff;border:1px solid #d4d4d8;border-radius:8px;padding:20px}
 h1{font-size:16px;margin:0 0 12px}
-.nav{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #e4e4e7;padding-bottom:8px}
-.nav button{background:#e4e4e7;color:#18181b;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px}
+.nav{display:-webkit-flex;display:flex;margin-bottom:14px;border-bottom:1px solid #e4e4e7;padding-bottom:8px}
+.nav button{background:#e4e4e7;color:#18181b;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-right:6px}
 .nav button.on{background:#18181b;color:#fff}
 label{display:block;font-size:12px;font-weight:600;margin-top:8px}
 input{width:100%;box-sizing:border-box;padding:8px;margin:4px 0 8px;border:1px solid #a1a1aa;border-radius:4px}
 .btn{width:100%;padding:9px;background:#18181b;color:#fff;border:0;border-radius:4px;cursor:pointer;font-weight:600;margin-top:6px}
-.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e4e4e7;font-size:13px}
+.row{display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;padding:8px 0;border-bottom:1px solid #e4e4e7;font-size:13px}
 .del{background:#dc2626;color:#fff;border:0;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px}
 .hide{display:none}
 footer{text-align:center;margin-top:20px;font-size:12px;color:#52525b;font-weight:600}
@@ -22,7 +22,7 @@ footer{text-align:center;margin-top:20px;font-size:12px;color:#52525b;font-weigh
 </head>
 <body>
 <div class="box" id="authBox">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <div style="display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;margin-bottom:12px">
     <h1 style="margin:0">XIQI OS — Administração</h1>
     <a href="/" style="font-size:12px;color:#2563eb;text-decoration:none;font-weight:600">← Voltar</a>
   </div>
@@ -32,23 +32,23 @@ footer{text-align:center;margin-top:20px;font-size:12px;color:#52525b;font-weigh
     <button type="button" id="t3">Esqueci a Senha</button>
   </div>
   <div id="v1">
-    <label>E-mail</label><input id="lEmail" type="email">
-    <label>Senha</label><input id="lPass" type="password">
+    <label>E-mail</label><input id="lEmail" type="email" autocomplete="off">
+    <label>Senha</label><input id="lPass" type="password" autocomplete="off">
     <button type="button" class="btn" id="btnLogin">Entrar</button>
     <div id="m1" style="color:#dc2626;font-size:12px;margin-top:6px"></div>
   </div>
   <div id="v2" class="hide">
-    <label>Nome Completo</label><input id="rName" type="text">
-    <label>E-mail</label><input id="rEmail" type="email">
-    <label>Senha</label><input id="rPass" type="password">
-    <label>Chave Mestra</label><input id="rKey" type="password">
+    <label>Nome Completo</label><input id="rName" type="text" autocomplete="off">
+    <label>E-mail</label><input id="rEmail" type="email" autocomplete="off">
+    <label>Senha</label><input id="rPass" type="password" autocomplete="off">
+    <label>Chave Mestra</label><input id="rKey" type="password" autocomplete="off">
     <button type="button" class="btn" id="btnReg">Cadastrar Administrador</button>
     <div id="m2" style="font-size:12px;margin-top:6px"></div>
   </div>
   <div id="v3" class="hide">
-    <label>E-mail</label><input id="fEmail" type="email">
-    <label>Chave Mestra</label><input id="fKey" type="password">
-    <label>Nova Senha</label><input id="fPass" type="password">
+    <label>E-mail</label><input id="fEmail" type="email" autocomplete="off">
+    <label>Chave Mestra</label><input id="fKey" type="password" autocomplete="off">
+    <label>Nova Senha</label><input id="fPass" type="password" autocomplete="off">
     <button type="button" class="btn" id="btnReset">Redefinir Senha</button>
     <div id="m3" style="font-size:12px;margin-top:6px"></div>
   </div>

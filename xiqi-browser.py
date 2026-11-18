@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import os
 import re
+import time
 import urllib.parse
+import urllib.request
 
 os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] = "1"
 os.environ["WEBKIT_DISABLE_DMABUF_RENDERER"] = "1"
-os.environ["WEBKIT_FORCE_SANDBOX"] = "0"
+os.environ["WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS"] = "1"
 os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
 os.environ.setdefault("GDK_BACKEND", "x11")
 
@@ -24,6 +26,24 @@ URL_PATTERN = re.compile(
 )
 
 
+def is_server_ready(base_url=BASE_URL, timeout=1.0):
+    check_url = base_url.rstrip("/") + "/api/system"
+    try:
+        with urllib.request.urlopen(check_url, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def wait_for_server(base_url=BASE_URL, max_wait_sec=20.0):
+    deadline = time.monotonic() + max_wait_sec
+    while time.monotonic() < deadline:
+        if is_server_ready(base_url, timeout=0.8):
+            return True
+        time.sleep(0.5)
+    return is_server_ready(base_url, timeout=0.8)
+
+
 class XiqiBrowser(Gtk.Window):
     def __init__(self):
         super().__init__(title="Navegador XIQI OS v1.0 — Corporação Engecema")
@@ -35,12 +55,6 @@ class XiqiBrowser(Gtk.Window):
         self.is_fullscreen = os.environ.get("XIQI_FULLSCREEN", "1") == "1"
 
         self.ctx = WebKit2.WebContext.new_ephemeral()
-        tls_policy = (
-            WebKit2.TLSErrorsPolicy.IGNORE
-            if os.environ.get("XIQI_ALLOW_SELF_SIGNED") == "1"
-            else WebKit2.TLSErrorsPolicy.FAIL
-        )
-        self.ctx.set_tls_errors_policy(tls_policy)
         cm = self.ctx.get_cookie_manager()
         cm.set_accept_policy(WebKit2.CookieAcceptPolicy.ALWAYS)
 
@@ -81,7 +95,14 @@ class XiqiBrowser(Gtk.Window):
             self.fullscreen()
 
         if initial_wv is not None:
-            GLib.idle_add(lambda: initial_wv.load_uri(DEFAULT_HOME) or False)
+            GLib.idle_add(lambda: self.load_when_ready(initial_wv, DEFAULT_HOME))
+
+    def load_when_ready(self, webview, uri):
+        if is_server_ready(BASE_URL, timeout=0.6):
+            webview.load_uri(uri)
+            return False
+        GLib.timeout_add(500, lambda: self.load_when_ready(webview, uri))
+        return False
 
     def on_key_press(self, widget, event):
         if event.keyval == Gdk.KEY_F11:
@@ -125,17 +146,53 @@ class XiqiBrowser(Gtk.Window):
         st.set_enable_html5_local_storage(True)
         st.set_enable_html5_database(True)
         st.set_enable_webgl(False)
-        if hasattr(st, "set_enable_accelerated_2d_canvas"):
-            st.set_enable_accelerated_2d_canvas(False)
         st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.NEVER)
+        for attr in (
+            "set_enable_java",
+            "set_enable_plugins",
+            "set_allow_file_access_from_file_urls",
+            "set_allow_universal_access_from_file_urls",
+            "set_enable_developer_extras",
+        ):
+            if hasattr(st, attr):
+                getattr(st, attr)(False)
         st.set_user_agent(
             "XIQI-Browser/1.0 (XIQI OS v1.0; XIQI Core x86_64; Corporacao Engecema)"
         )
+        wv.connect("decide-policy", self.on_decide_policy)
+        wv.connect("load-failed", self.on_load_failed)
         wv.connect("web-process-terminated", self.on_web_process_terminated)
         return wv
 
+    def on_decide_policy(self, webview, decision, decision_type):
+        if decision_type in (
+            WebKit2.PolicyDecisionType.NAVIGATION_ACTION,
+            WebKit2.PolicyDecisionType.NEW_WINDOW_ACTION,
+        ):
+            nav = decision.get_navigation_action()
+            req = nav.get_request() if nav else None
+            uri = req.get_uri() if req else ""
+            if uri and not uri.lower().startswith("about:blank") and not re.match(r'^https?://', uri, re.IGNORECASE):
+                decision.ignore()
+                return True
+        return False
+
+    def on_load_failed(self, webview, load_event, failing_uri, error):
+        target = failing_uri if (isinstance(failing_uri, str) and failing_uri.startswith(("http://127.0.0.1", "http://localhost"))) else DEFAULT_HOME
+        if isinstance(failing_uri, str) and (failing_uri.startswith("http://127.0.0.1") or failing_uri.startswith("http://localhost")):
+            GLib.timeout_add(1000, lambda: self.retry_load(webview, target))
+            return True
+        return False
+
+    def retry_load(self, webview, uri):
+        if is_server_ready(BASE_URL, timeout=0.6):
+            webview.load_uri(uri)
+            return False
+        GLib.timeout_add(500, lambda: self.retry_load(webview, uri))
+        return False
+
     def on_web_process_terminated(self, webview, reason):
-        GLib.idle_add(lambda: webview.load_uri(DEFAULT_HOME) or False)
+        GLib.timeout_add(500, lambda: self.retry_load(webview, DEFAULT_HOME))
 
     def add_tab(self, url=None, title="Nova Aba", related=None):
         if self.notebook.get_n_pages() >= 12 and url:
@@ -190,5 +247,6 @@ class XiqiBrowser(Gtk.Window):
 
 
 if __name__ == "__main__":
+    wait_for_server(BASE_URL, max_wait_sec=20.0)
     win = XiqiBrowser()
     Gtk.main()
