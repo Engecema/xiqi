@@ -8,6 +8,7 @@ const net = require('net');
 const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
+const { execFile } = require('child_process');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -1673,6 +1674,158 @@ app.get('/api/system', (req, res) => {
     `• Memória Livre: ${freeMb} MB / ${totalMb} MB\n` +
     `• Ativo há: ${uptimeMin} min`;
   res.json(info);
+});
+
+function isLocalLoopbackRequest(req) {
+  const raw = String((req.socket && req.socket.remoteAddress) || '').trim();
+  return raw === '127.0.0.1' || raw === '::1' || raw === '::ffff:127.0.0.1';
+}
+
+function canControlSystem(req) {
+  return isLocalLoopbackRequest(req) || Boolean(getAuthenticatedUserId(req)) || checkAdmin(req);
+}
+
+function execFileAsync(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: 45000, maxBuffer: 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        return reject(err);
+      }
+      resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') });
+    });
+  });
+}
+
+async function runPrivilegedBinary(candidates, args = [], opts = {}) {
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  let lastErr = null;
+  for (const bin of candidates) {
+    if (bin.startsWith('/') && !fs.existsSync(bin)) continue;
+    try {
+      if (isRoot) {
+        return await execFileAsync(bin, args, opts);
+      }
+      try {
+        return await execFileAsync(bin, args, opts);
+      } catch {
+        return await execFileAsync('sudo', ['-n', bin, ...args], opts);
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('Comando do sistema indisponível.');
+}
+
+function triggerXiqiosRestart() {
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  const attempts = [
+    ['/sbin/rc-service', ['xiqios', 'restart']],
+    ['rc-service', ['xiqios', 'restart']],
+    ['/usr/bin/systemctl', ['restart', 'xiqios']],
+    ['systemctl', ['restart', 'xiqios']],
+    ['/opt/xiqi/bin/xiqictl', ['restart']],
+    ['/usr/local/bin/xiqictl', ['restart']]
+  ];
+
+  (async () => {
+    for (const [cmd, args] of attempts) {
+      if (cmd.startsWith('/') && !fs.existsSync(cmd)) continue;
+      try {
+        if (isRoot) {
+          await execFileAsync(cmd, args, { timeout: 15000 });
+        } else {
+          await execFileAsync('sudo', ['-n', cmd, ...args], { timeout: 15000 });
+        }
+        return;
+      } catch {
+        // tenta próximo controlador disponível
+      }
+    }
+    process.exit(0);
+  })();
+}
+
+app.post('/api/system/update', rateLimit('sys_update', 60 * 1000, 6), async (req, res) => {
+  if (!canControlSystem(req)) {
+    return res.status(403).json({ error: 'Acesso negado para atualizar o sistema.' });
+  }
+  const appDir = fs.existsSync('/opt/xiqi/app/.git')
+    ? '/opt/xiqi/app'
+    : (fs.existsSync(path.join(__dirname, '.git')) ? __dirname : '');
+
+  if (!appDir) {
+    return res.status(400).json({
+      error: 'Repositório de atualização não encontrado em /opt/xiqi/app.'
+    });
+  }
+
+  try {
+    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+    const gitFetchArgs = ['-c', 'safe.directory=' + appDir, 'fetch', 'origin', 'main'];
+    const gitResetArgs = ['-c', 'safe.directory=' + appDir, 'reset', '--hard', 'origin/main'];
+
+    let fetchOut;
+    let resetOut;
+    try {
+      fetchOut = await execFileAsync('git', gitFetchArgs, { cwd: appDir, timeout: 45000 });
+      resetOut = await execFileAsync('git', gitResetArgs, { cwd: appDir, timeout: 20000 });
+    } catch (gitErr) {
+      if (!isRoot) {
+        fetchOut = await execFileAsync('sudo', ['-n', 'git', ...gitFetchArgs], { cwd: appDir, timeout: 45000 });
+        resetOut = await execFileAsync('sudo', ['-n', 'git', ...gitResetArgs], { cwd: appDir, timeout: 20000 });
+      } else {
+        throw gitErr;
+      }
+    }
+
+    const summary = (resetOut.stdout || fetchOut.stdout || 'Atualizado para origin/main.').trim().slice(0, 400);
+    res.json({
+      ok: true,
+      message: 'Sistema atualizado com sucesso. Reiniciando serviço xiqios...',
+      output: summary
+    });
+    setTimeout(triggerXiqiosRestart, 500);
+  } catch (err) {
+    const detail = String(err && (err.stderr || err.message) || 'Falha ao atualizar via Git.').trim().slice(0, 240);
+    res.status(500).json({
+      error: 'Falha ao atualizar o sistema: ' + detail
+    });
+  }
+});
+
+app.post('/api/system/reboot', rateLimit('sys_power', 60 * 1000, 6), (req, res) => {
+  if (!canControlSystem(req)) {
+    return res.status(403).json({ error: 'Acesso negado para reiniciar o computador.' });
+  }
+  res.json({
+    ok: true,
+    message: 'Comando de reinicialização enviado. Reiniciando o PC...'
+  });
+  setTimeout(() => {
+    runPrivilegedBinary(['/sbin/reboot', '/usr/sbin/reboot', '/bin/reboot', 'reboot'], [], { timeout: 10000 })
+      .catch(err => {
+        console.error('[XIQI OS Reboot Error]', err && err.message ? err.message : err);
+      });
+  }, 400);
+});
+
+app.post('/api/system/shutdown', rateLimit('sys_power', 60 * 1000, 6), (req, res) => {
+  if (!canControlSystem(req)) {
+    return res.status(403).json({ error: 'Acesso negado para desligar o computador.' });
+  }
+  res.json({
+    ok: true,
+    message: 'Comando de desligamento enviado. Desligando o PC...'
+  });
+  setTimeout(() => {
+    runPrivilegedBinary(['/sbin/poweroff', '/usr/sbin/poweroff', '/bin/poweroff', 'poweroff'], [], { timeout: 10000 })
+      .catch(err => {
+        console.error('[XIQI OS Shutdown Error]', err && err.message ? err.message : err);
+      });
+  }, 400);
 });
 
 app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), (req, res) => {

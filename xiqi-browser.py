@@ -7,12 +7,13 @@ os.environ["WEBKIT_DISABLE_COMPOSITING_MODE"] = "1"
 os.environ["WEBKIT_DISABLE_DMABUF_RENDERER"] = "1"
 os.environ["WEBKIT_FORCE_SANDBOX"] = "0"
 os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
+os.environ.setdefault("GDK_BACKEND", "x11")
 
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
 gi.require_version('WebKit2', '4.1')
-from gi.repository import Gtk, Gdk, WebKit2
+from gi.repository import Gtk, Gdk, GLib, WebKit2
 
 DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 BASE_URL = DEFAULT_HOME.rstrip("/")
@@ -73,11 +74,14 @@ class XiqiBrowser(Gtk.Window):
         self.notebook.connect("switch-page", self.on_switch_page)
         vbox.pack_start(self.notebook, True, True, 0)
 
-        self.add_tab(DEFAULT_HOME, "XIQI OS v1.0")
+        initial_wv = self.add_tab(None, "XIQI OS v1.0")
         self.notebook.set_current_page(0)
         self.show_all()
         if self.is_fullscreen:
             self.fullscreen()
+
+        if initial_wv is not None:
+            GLib.idle_add(lambda: initial_wv.load_uri(DEFAULT_HOME) or False)
 
     def on_key_press(self, widget, event):
         if event.keyval == Gdk.KEY_F11:
@@ -112,17 +116,26 @@ class XiqiBrowser(Gtk.Window):
             if related
             else WebKit2.WebView.new_with_context(self.ctx)
         )
+        if hasattr(wv, "set_background_color"):
+            wv.set_background_color(Gdk.RGBA(1.0, 1.0, 1.0, 1.0))
+
         st = wv.get_settings()
         st.set_enable_javascript(True)
         st.set_javascript_can_open_windows_automatically(False)
         st.set_enable_html5_local_storage(True)
         st.set_enable_html5_database(True)
-        st.set_enable_webgl(True)
+        st.set_enable_webgl(False)
+        if hasattr(st, "set_enable_accelerated_2d_canvas"):
+            st.set_enable_accelerated_2d_canvas(False)
         st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.NEVER)
         st.set_user_agent(
             "XIQI-Browser/1.0 (XIQI OS v1.0; XIQI Core x86_64; Corporacao Engecema)"
         )
+        wv.connect("web-process-terminated", self.on_web_process_terminated)
         return wv
+
+    def on_web_process_terminated(self, webview, reason):
+        GLib.idle_add(lambda: webview.load_uri(DEFAULT_HOME) or False)
 
     def add_tab(self, url=None, title="Nova Aba", related=None):
         if self.notebook.get_n_pages() >= 12 and url:

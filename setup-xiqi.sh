@@ -213,15 +213,44 @@ case "${1:-status}" in
       exit 1
     fi
     ;;
+  update)
+    cd "${XIQI_APP}"
+    git -c safe.directory="${XIQI_APP}" fetch origin main
+    git -c safe.directory="${XIQI_APP}" reset --hard origin/main
+    if command -v rc-service >/dev/null 2>&1; then
+      rc-service xiqios restart
+    elif command -v systemctl >/dev/null 2>&1; then
+      systemctl restart xiqios
+    else
+      "$0" restart
+    fi
+    echo "XIQI OS atualizado e reiniciado."
+    ;;
+  reboot)
+    exec /sbin/reboot 2>/dev/null || exec reboot
+    ;;
+  shutdown)
+    exec /sbin/poweroff 2>/dev/null || exec poweroff
+    ;;
   *)
-    echo "Uso: xiqictl {start|stop|restart|status}"
+    echo "Uso: xiqictl {start|stop|restart|status|update|reboot|shutdown}"
     exit 1
     ;;
 esac
 EOF
-  chmod 750 "${XIQI_BASE}/bin/xiqictl"
+  chmod 755 "${XIQI_BASE}/bin/xiqictl"
   mkdir -p "${ROOT_PREFIX}/usr/local/bin"
   ln -sf "/opt/xiqi/bin/xiqictl" "${ROOT_PREFIX}/usr/local/bin/xiqictl"
+
+  # Permissão sudo sem senha para usuário neutro xiqi e controle via xiqictl
+  mkdir -p "${ROOT_PREFIX}/etc/sudoers.d"
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/sudoers.d/xiqi"
+xiqi ALL=(ALL) NOPASSWD: /sbin/reboot, /usr/sbin/reboot, /bin/reboot, /sbin/poweroff, /usr/sbin/poweroff, /bin/poweroff, /sbin/rc-service xiqios restart, /usr/bin/systemctl restart xiqios, /opt/xiqi/bin/xiqictl, /usr/local/bin/xiqictl, /usr/bin/git
+EOF
+  chmod 0440 "${ROOT_PREFIX}/etc/sudoers.d/xiqi"
+  if command -v git >/dev/null 2>&1 && [ -z "${ROOT_PREFIX}" ]; then
+    git config --system --add safe.directory /opt/xiqi/app 2>/dev/null || true
+  fi
 
   # Configuração de sessão gráfica direta via startx + xfwm4 + xiqi-browser.py (sem tela de login do SO)
   mkdir -p "${ROOT_PREFIX}/etc/X11" "${ROOT_PREFIX}/home/xiqi"

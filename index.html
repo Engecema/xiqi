@@ -32,12 +32,21 @@
       box-sizing: border-box;
     }
 
+    html {
+      height: 100%;
+    }
+
     html, body {
       margin: 0;
       padding: 0;
+      min-height: 100%;
       min-height: 100vh;
+      width: 100%;
+      background-color: #ffffff;
       background-color: var(--bg-page);
+      color: #0f172a;
       color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       font-family: var(--font-sans);
       font-size: 14px;
       line-height: 1.5;
@@ -45,7 +54,9 @@
     }
 
     body {
+      display: -webkit-flex;
       display: flex;
+      -webkit-flex-direction: column;
       flex-direction: column;
     }
 
@@ -62,22 +73,60 @@
     }
 
     /* =====================================================================
-       TOPO DIREITO: ATALHOS DISCRETOS + ABA DE LOGIN E CADASTRO
+       TOPO: CONTROLES DISCRETOS DO SISTEMA + LOGIN E CADASTRO
        ===================================================================== */
     .minimal-header {
-      padding: 16px 24px;
+      padding: 14px 24px;
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      justify-content: flex-end;
-      gap: 16px;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
+      gap: 12px;
       position: relative;
       z-index: 50;
+      width: 100%;
+      background-color: #ffffff;
     }
 
     .header-links {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 16px;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .header-sys-btn {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 5px 11px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      color: #475569;
+      cursor: pointer;
+      min-height: 30px;
+      white-space: nowrap;
+      margin-right: 6px;
+    }
+
+    .header-sys-btn:hover {
+      background-color: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+
+    .header-sys-btn-danger:hover {
+      background-color: #fef2f2;
+      border-color: #fecaca;
+      color: #dc2626;
     }
 
     .header-link {
@@ -208,8 +257,8 @@
     }
 
     .auth-tabs {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      display: -webkit-flex;
+      display: flex;
       gap: 4px;
       background-color: var(--bg-soft);
       border: 1px solid var(--border-light);
@@ -219,6 +268,9 @@
     }
 
     .auth-tab-btn {
+      -webkit-flex: 1 1 0;
+      flex: 1 1 0;
+      min-width: 0;
       background: transparent;
       border: none;
       border-radius: 6px;
@@ -229,6 +281,7 @@
       color: var(--text-muted);
       cursor: pointer;
       white-space: nowrap;
+      text-align: center;
       transition: background-color 140ms ease, color 140ms ease;
     }
 
@@ -347,20 +400,30 @@
        CENTRO MINIMALISTA XIQI OS + MODO IA
        ===================================================================== */
     .chrome-center {
+      -webkit-flex: 1 0 auto;
       flex: 1 0 auto;
+      display: -webkit-flex;
       display: flex;
+      -webkit-flex-direction: column;
       flex-direction: column;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
-      padding: 24px 20px 48px;
+      padding: 36px 20px 56px;
+      min-height: 440px;
       width: 100%;
+      background-color: #ffffff;
+      color: #0f172a;
+      text-align: center;
     }
 
     .xiqi-wordmark {
       margin: 0 0 28px;
-      font-size: clamp(3.2rem, 7vw, 4.75rem);
+      font-size: 64px;
       font-weight: 700;
       letter-spacing: 0.06em;
+      color: #0f172a;
       color: var(--text-main);
       user-select: none;
       line-height: 1;
@@ -369,6 +432,7 @@
     .search-box-wrap {
       width: 100%;
       max-width: 620px;
+      margin: 0 auto;
     }
 
     .search-pill {
@@ -877,10 +941,16 @@
 
     .modal-backdrop {
       position: fixed;
-      inset: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
       background-color: rgba(15, 23, 42, 0.36);
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
       padding: 20px;
       z-index: 100;
@@ -911,22 +981,30 @@
     }
 
     .modal-actions {
+      display: -webkit-flex;
       display: flex;
+      -webkit-justify-content: flex-end;
       justify-content: flex-end;
       gap: 10px;
       margin-top: 16px;
     }
 
     .quick-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      display: -webkit-flex;
+      display: flex;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 14px;
     }
 
     .quick-item {
+      width: calc(50% - 5px);
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: space-between;
       justify-content: space-between;
       gap: 8px;
       padding: 10px 12px;
@@ -975,23 +1053,29 @@
         flex-wrap: wrap;
       }
       .header-links {
-        gap: 10px;
+        gap: 6px;
+      }
+      .xiqi-wordmark {
+        font-size: 46px;
       }
       .bottom-corner-bar {
         padding: 12px 14px;
       }
-      .quick-grid {
-        grid-template-columns: 1fr;
+      .quick-item {
+        width: 100%;
       }
     }
   </style>
 </head>
 <body>
 <script>if(window.location.search==="?"){window.history.replaceState({},"","/");}</script>
-  <!-- Canto Superior Direito: Atalhos + Aba de Fazer Login e Cadastro de Usuario -->
+  <!-- Topo: Controles Discretos do Sistema + Aba de Fazer Login e Cadastro de Usuario -->
   <header class="minimal-header">
-    <nav class="header-links" aria-label="Atalhos superiores">
-      </nav>
+    <nav class="header-links" aria-label="Controles do sistema">
+      <button type="button" class="header-sys-btn" id="sysUpdateBtn" title="Atualizar XIQI OS via repositório oficial">↻ Atualizar Sistema</button>
+      <button type="button" class="header-sys-btn" id="sysRebootBtn" title="Reiniciar o computador">⟳ Reiniciar PC</button>
+      <button type="button" class="header-sys-btn header-sys-btn-danger" id="sysShutdownBtn" title="Desligar o computador">⏻ Desligar PC</button>
+    </nav>
 
     <div class="auth-header-controls" id="authHeaderWrap">
       <button type="button" id="xiqiDotsBtn" title="Aplicativos XIQI OS" aria-label="Aplicativos" style="background:transparent;border:0;padding:8px;border-radius:50%;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:6px;"><svg width="20" height="20" viewBox="0 0 16 16"><circle cx="4" cy="4" r="2.4" fill="#2563eb"/><circle cx="12" cy="4" r="2.4" fill="#16a34a"/><circle cx="4" cy="12" r="2.4" fill="#16a34a"/><circle cx="12" cy="12" r="2.4" fill="#2563eb"/></svg></button>
@@ -1098,7 +1182,7 @@
 
     <form class="search-box-wrap" id="searchForm">
       <div class="search-pill" id="searchPill">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -2296,17 +2380,17 @@
 
   
 
-<div id="xiqiAppMenu" style="position:fixed;top:58px;right:20px;width:270px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 12px 28px rgba(0,0,0,.15);z-index:9997;display:none;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
-  <button type="button" class="xapp" data-a="term" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px;font-weight:700;color:#2563eb">&gt;_</div><div style="font-size:11px;margin-top:4px">Terminal</div></button>
-  <button type="button" class="xapp" data-a="files" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📁</div><div style="font-size:11px;margin-top:4px">Arquivos</div></button>
-  <button type="button" class="xapp" data-a="notes" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📝</div><div style="font-size:11px;margin-top:4px">Notas</div></button>
-  <button type="button" class="xapp" data-a="calc" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🧮</div><div style="font-size:11px;margin-top:4px">Cálculo</div></button>
-  <button type="button" class="xapp" data-a="sys" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🖥️</div><div style="font-size:11px;margin-top:4px">Sistema</div></button>
-  <button type="button" class="xapp" data-a="cal" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📅</div><div style="font-size:11px;margin-top:4px">Data</div></button>
-  <button type="button" class="xapp" data-a="ai" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">✨</div><div style="font-size:11px;margin-top:4px">Modo IA</div></button>
-  <button type="button" class="xapp" data-a="about" style="border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">⚙️</div><div style="font-size:11px;margin-top:4px">Sobre</div></button>
+<div id="xiqiAppMenu" style="position:fixed;top:58px;right:20px;width:270px;background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 12px 28px rgba(0,0,0,.15);z-index:9997;display:none;flex-wrap:wrap;text-align:center;">
+  <button type="button" class="xapp" data-a="term" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px;font-weight:700;color:#2563eb">&gt;_</div><div style="font-size:11px;margin-top:4px">Terminal</div></button>
+  <button type="button" class="xapp" data-a="files" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📁</div><div style="font-size:11px;margin-top:4px">Arquivos</div></button>
+  <button type="button" class="xapp" data-a="notes" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📝</div><div style="font-size:11px;margin-top:4px">Notas</div></button>
+  <button type="button" class="xapp" data-a="calc" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🧮</div><div style="font-size:11px;margin-top:4px">Cálculo</div></button>
+  <button type="button" class="xapp" data-a="sys" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🖥️</div><div style="font-size:11px;margin-top:4px">Sistema</div></button>
+  <button type="button" class="xapp" data-a="cal" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📅</div><div style="font-size:11px;margin-top:4px">Data</div></button>
+  <button type="button" class="xapp" data-a="ai" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">✨</div><div style="font-size:11px;margin-top:4px">Modo IA</div></button>
+  <button type="button" class="xapp" data-a="about" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">⚙️</div><div style="font-size:11px;margin-top:4px">Sobre</div></button>
 </div>
-<div id="xiqiWin" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px">
+<div id="xiqiWin" style="position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(15,23,42,.5);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px">
   <div style="background:#fff;border-radius:12px;max-width:450px;width:100%;padding:18px">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:10px">
       <strong id="xiqiWT">App</strong>
@@ -2318,8 +2402,106 @@
 <script>
 (function(){
   var db=document.getElementById("xiqiDotsBtn"),mn=document.getElementById("xiqiAppMenu"),wn=document.getElementById("xiqiWin"),wt=document.getElementById("xiqiWT"),wb=document.getElementById("xiqiWB");
+
+  function openSystemConfirm(actionType){
+    if(!wn||!wt||!wb)return;
+    wb.innerHTML="";
+    wn.style.display="flex";
+    if(actionType==="update"){
+      wt.textContent="Atualizar Sistema — XIQI OS";
+      var info=document.createElement("p");
+      info.style.cssText="margin:0 0 12px;font-size:13px;color:#334155";
+      info.textContent="Executar atualização oficial (git fetch/reset em /opt/xiqi/app) e reiniciar o serviço xiqios?";
+      var statusEl=document.createElement("div");
+      statusEl.style.cssText="font-size:12px;margin-bottom:12px;white-space:pre-wrap;color:#475569";
+      var row=document.createElement("div");
+      row.style.cssText="display:flex;justify-content:flex-end;gap:8px";
+      var cancelBtn=document.createElement("button");
+      cancelBtn.type="button";cancelBtn.className="btn-secondary";cancelBtn.textContent="Cancelar";
+      cancelBtn.onclick=function(){wn.style.display="none";};
+      var okBtn=document.createElement("button");
+      okBtn.type="button";okBtn.className="btn-primary";okBtn.textContent="Atualizar Agora";
+      okBtn.onclick=async function(){
+        okBtn.disabled=true;cancelBtn.disabled=true;
+        statusEl.style.color="#2563eb";
+        statusEl.textContent="Baixando atualizações e reiniciando serviço xiqios...";
+        try{
+          var r=await fetch("/api/system/update",{method:"POST"});
+          var d=await r.json().catch(function(){return {};});
+          if(!r.ok){
+            statusEl.style.color="#dc2626";
+            statusEl.textContent=d.error||"Não foi possível atualizar o sistema.";
+            okBtn.disabled=false;cancelBtn.disabled=false;
+            return;
+          }
+          statusEl.style.color="#16a34a";
+          statusEl.textContent=(d.message||"Atualizado com sucesso.")+(d.output?"\n"+d.output:"");
+          setTimeout(function(){window.location.reload();},4500);
+        }catch(err){
+          statusEl.style.color="#dc2626";
+          statusEl.textContent="Erro de comunicação ao atualizar o sistema.";
+          okBtn.disabled=false;cancelBtn.disabled=false;
+        }
+      };
+      row.appendChild(cancelBtn);row.appendChild(okBtn);
+      wb.appendChild(info);wb.appendChild(statusEl);wb.appendChild(row);
+      return;
+    }
+
+    var isReboot=actionType==="reboot";
+    wt.textContent=isReboot?"Reiniciar Computador":"Desligar Computador";
+    var msg=document.createElement("p");
+    msg.style.cssText="margin:0 0 12px;font-size:13px;color:#334155";
+    msg.textContent=isReboot
+      ?"Confirma a reinicialização imediata do computador?"
+      :"Confirma o desligamento imediato do computador?";
+    var st=document.createElement("div");
+    st.style.cssText="font-size:12px;margin-bottom:12px;color:#475569";
+    var actRow=document.createElement("div");
+    actRow.style.cssText="display:flex;justify-content:flex-end;gap:8px";
+    var btnCancel=document.createElement("button");
+    btnCancel.type="button";btnCancel.className="btn-secondary";btnCancel.textContent="Cancelar";
+    btnCancel.onclick=function(){wn.style.display="none";};
+    var btnConfirm=document.createElement("button");
+    btnConfirm.type="button";
+    btnConfirm.className="btn-primary";
+    if(!isReboot){btnConfirm.style.backgroundColor="#dc2626";}
+    btnConfirm.textContent=isReboot?"Confirmar Reinício":"Confirmar Desligamento";
+    btnConfirm.onclick=async function(){
+      btnConfirm.disabled=true;btnCancel.disabled=true;
+      st.style.color="#2563eb";
+      st.textContent=isReboot?"Enviando comando de reinicialização...":"Enviando comando de desligamento...";
+      try{
+        var ep=isReboot?"/api/system/reboot":"/api/system/shutdown";
+        var r=await fetch(ep,{method:"POST"});
+        var d=await r.json().catch(function(){return {};});
+        if(!r.ok){
+          st.style.color="#dc2626";
+          st.textContent=d.error||"Não foi possível executar o comando.";
+          btnConfirm.disabled=false;btnCancel.disabled=false;
+          return;
+        }
+        st.style.color="#16a34a";
+        st.textContent=d.message||(isReboot?"Reiniciando o PC...":"Desligando o PC...");
+      }catch(err){
+        st.style.color="#dc2626";
+        st.textContent="Erro de comunicação com o servidor.";
+        btnConfirm.disabled=false;btnCancel.disabled=false;
+      }
+    };
+    actRow.appendChild(btnCancel);actRow.appendChild(btnConfirm);
+    wb.appendChild(msg);wb.appendChild(st);wb.appendChild(actRow);
+  }
+
+  var btnSysUp=document.getElementById("sysUpdateBtn");
+  var btnSysReb=document.getElementById("sysRebootBtn");
+  var btnSysOff=document.getElementById("sysShutdownBtn");
+  if(btnSysUp)btnSysUp.onclick=function(){openSystemConfirm("update");};
+  if(btnSysReb)btnSysReb.onclick=function(){openSystemConfirm("reboot");};
+  if(btnSysOff)btnSysOff.onclick=function(){openSystemConfirm("shutdown");};
+
   if(!db||!mn)return;
-  db.onclick=function(e){e.stopPropagation();mn.style.display = (mn.style.display === "grid") ? "none" : "grid";};
+  db.onclick=function(e){e.stopPropagation();mn.style.display = (mn.style.display === "flex") ? "none" : "flex";};
   document.addEventListener("click",function(e){if(!mn.contains(e.target)&&!db.contains(e.target))mn.style.display = "none";});
   document.getElementById("xiqiWC").onclick=function(){wn.style.display = "none";};
   document.querySelectorAll(".xapp").forEach(function(b){
@@ -2336,8 +2518,21 @@
       }
       wn.style.display = "flex";
       if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);fetch("/api/notes").then(function(r){return r.ok?r.json():{}}).then(function(d){ta.value=(d&&d.text)||""}).catch(function(){st.style.color="#dc2626";st.textContent="Erro ao carregar notas"});sb.onclick=async function(){st.style.color="#16a34a";st.textContent="Salvando...";try{var r=await fetch("/api/notes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ta.value})});if(!r.ok){st.style.color="#dc2626";}st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";}catch(err){st.style.color="#dc2626";st.textContent="Falha de comunicação";}};}
-      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m.at(1)),op=m.at(2),numB=Number(m.at(3));var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
-      else if(a==="sys"){wt.textContent="Sistema — XIQI OS";wb.textContent="Consultando...";try{var r=await fetch("/api/system");var d=await r.json();wb.style.whiteSpace="pre-line";wb.textContent=d.text||"XIQI OS ativo.";}catch(err){wb.textContent="Não foi possível consultar o status do sistema.";}}
+      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m[1]),op=m[2],numB=Number(m[3]);var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
+      else if(a==="sys"){
+        wt.textContent="Sistema — XIQI OS";
+        var sysInfo=document.createElement("div");
+        sysInfo.style.cssText="white-space:pre-line;margin-bottom:14px;font-size:13px;color:#0f172a";
+        sysInfo.textContent="Consultando...";
+        var sysActions=document.createElement("div");
+        sysActions.style.cssText="display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;padding-top:12px";
+        var bUpd=document.createElement("button");bUpd.type="button";bUpd.className="btn-sm btn-sm-accent";bUpd.textContent="↻ Atualizar Sistema";bUpd.onclick=function(){openSystemConfirm("update");};
+        var bReb=document.createElement("button");bReb.type="button";bReb.className="btn-sm";bReb.textContent="⟳ Reiniciar PC";bReb.onclick=function(){openSystemConfirm("reboot");};
+        var bOff=document.createElement("button");bOff.type="button";bOff.className="btn-sm";bOff.style.color="#dc2626";bOff.textContent="⏻ Desligar PC";bOff.onclick=function(){openSystemConfirm("shutdown");};
+        sysActions.appendChild(bUpd);sysActions.appendChild(bReb);sysActions.appendChild(bOff);
+        wb.appendChild(sysInfo);wb.appendChild(sysActions);
+        try{var r=await fetch("/api/system");var d=await r.json();sysInfo.textContent=d.text||"XIQI OS ativo.";}catch(err){sysInfo.textContent="Não foi possível consultar o status do sistema.";}
+      }
       else if(a==="cal"){wt.textContent="Data e Hora";wb.textContent=new Date().toLocaleString("pt-BR");}
       else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (XIQI OS)":"Terminal (Console Seguro)";var kl=document.createElement("label");kl.textContent="Chave Mestra";kl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ki=document.createElement("input");ki.type="password";ki.autocomplete="off";ki.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px";var pr=document.createElement("pre");pr.style.cssText="background:#0f172a;color:#4ade80;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Informe a Chave Mestra acima e clique em Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls":"help";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace";var rb=document.createElement("button");rb.type="button";rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";var runCmd=async function(){try{var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json().catch(function(){return {output:"Erro de comunicação"}});pr.textContent=d.output||"(ok)";}catch(err){pr.textContent="Erro de comunicação com o servidor";}};rb.onclick=runCmd;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCmd();}});wb.appendChild(kl);wb.appendChild(ki);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}
       else if(a==="about"){wt.textContent="Sobre o Sistema";wb.textContent="XIQI OS v1.0 — Núcleo XIQI Core x86_64 (Edição Data Center Independente) — Corporação Engecema";}
