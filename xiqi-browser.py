@@ -98,10 +98,10 @@ class XiqiBrowser(Gtk.Window):
             GLib.idle_add(lambda: self.load_when_ready(initial_wv, DEFAULT_HOME))
 
     def load_when_ready(self, webview, uri):
-        if is_server_ready(BASE_URL, timeout=0.6):
+        if is_server_ready(BASE_URL, timeout=0.35):
             webview.load_uri(uri)
             return False
-        GLib.timeout_add(500, lambda: self.load_when_ready(webview, uri))
+        GLib.timeout_add(200, lambda: self.load_when_ready(webview, uri))
         return False
 
     def on_key_press(self, widget, event):
@@ -247,6 +247,5 @@ class XiqiBrowser(Gtk.Window):
 
 
 if __name__ == "__main__":
-    wait_for_server(BASE_URL, max_wait_sec=20.0)
     win = XiqiBrowser()
     Gtk.main()

@@ -9,9 +9,15 @@ set -eu
 #   sh setup-xiqi.sh --local
 #     Instala e configura o XIQI OS no servidor atual (/opt/xiqi).
 #
-#   sh setup-xiqi.sh --install-disk /dev/sdX [--yes]
-#     Particiona, formata e instala o XIQI OS diretamente no disco rígido/NVMe
-#     do servidor de data center (UEFI/GPT + Bootloader GRUB + Núcleo XIQI).
+#   sh setup-xiqi.sh --update-disk /dev/sdXN
+#     Atualiza e aplica as configurações recentes diretamente na partição existente
+#     do disco rígido (ex: Dell OptiPlex 380), SEM formatar e preservando AreiaPreta.
+#
+#   sh setup-xiqi.sh --target-root /mnt/ponto
+#     Aplica as configurações recentes em um disco já montado, sem formatar.
+#
+#   sh setup-xiqi.sh --install-disk /dev/sdX [--bios | --uefi] [--yes]
+#     Particiona, formata e instala do zero o XIQI OS em disco novo/limpo.
 # ==============================================================================
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -24,7 +30,9 @@ umask 027
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODE="local"
 TARGET_DISK=""
+TARGET_ROOT_DIR=""
 AUTO_YES="false"
+BOOT_MODE="auto"
 NODE_VERSION="v22.14.0"
 
 while [ "$#" -gt 0 ]; do
@@ -33,6 +41,24 @@ while [ "$#" -gt 0 ]; do
       MODE="disk"
       TARGET_DISK="${2:-}"
       shift 2
+      ;;
+    --update-disk)
+      MODE="update-disk"
+      TARGET_DISK="${2:-}"
+      shift 2
+      ;;
+    --target-root)
+      MODE="target-root"
+      TARGET_ROOT_DIR="${2:-}"
+      shift 2
+      ;;
+    --bios|--legacy)
+      BOOT_MODE="bios"
+      shift
+      ;;
+    --uefi)
+      BOOT_MODE="uefi"
+      shift
       ;;
     --local)
       MODE="local"
@@ -43,7 +69,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --help|-h)
-      echo "Uso: $0 [--local | --install-disk /dev/sdX [--yes]]"
+      echo "Uso: $0 [--local | --update-disk /dev/sdXN | --target-root /mnt/dir | --install-disk /dev/sdX [--bios | --uefi] [--yes]]"
       exit 0
       ;;
     *)
@@ -171,6 +197,8 @@ install_xiqi_stack() {
     cp -a "${SCRIPT_DIR}/node_modules" "${XIQI_BASE}/app/node_modules"
   elif [ -z "${ROOT_PREFIX}" ] && command -v npm >/dev/null 2>&1; then
     (cd "${XIQI_BASE}/app" && npm install --omit=dev)
+  elif [ -n "${ROOT_PREFIX}" ] && [ ! -d "${XIQI_BASE}/app/node_modules" ] && command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+    chroot "${ROOT_PREFIX}" sh -c "if command -v npm >/dev/null 2>&1; then cd /opt/xiqi/app && npm install --omit=dev; fi" || true
   fi
 
   echo "[5/7] Inicializando base neutra de perfis e configuração de rede..."
@@ -356,17 +384,6 @@ fi
 
 # Gerenciador de janelas mínimo xfwm4 (sem painéis, sem rodapés externos)
 xfwm4 --compositor=off >/dev/null 2>&1 &
-sleep 1
-
-# Aguarda o servidor XIQI OS responder na porta 3000 antes de abrir o navegador
-i=0
-while [ "$i" -lt 30 ]; do
-  if command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:3000/api/system >/dev/null 2>&1; then
-    break
-  fi
-  i=$((i + 1))
-  sleep 1
-done
 
 exec /usr/bin/python3 /opt/xiqi/app/xiqi-browser.py
 EOF
@@ -415,8 +432,8 @@ fi
 export XIQI_AI_KEY="${XIQI_AI_KEY:-}"
 
 depend() {
-  need net
-  after firewall
+  need localmount
+  after loopback
 }
 
 start_pre() {
@@ -465,7 +482,7 @@ pidfile="/run/xiqi-display.pid"
 
 depend() {
   need localmount
-  after net xiqios
+  after xiqios
 }
 
 start() {
@@ -516,8 +533,7 @@ EOF
   cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqios.service"
 [Unit]
 Description=XIQI OS Corporate Server (Corporação Engecema)
-After=network-online.target
-Wants=network-online.target
+After=local-fs.target
 
 [Service]
 Type=simple
@@ -527,7 +543,7 @@ Environment=XIQI_CONFIG_DIR=/opt/xiqi/config
 Environment=XIQI_AI_KEY=
 ExecStart=/usr/local/bin/node /opt/xiqi/app/server.js
 Restart=always
-RestartSec=3
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
@@ -582,7 +598,19 @@ if [ "${MODE}" = "disk" ]; then
     exit 1
   fi
 
-  for tool in parted mkfs.vfat mkfs.ext4 blkid mount umount; do
+  if [ "${BOOT_MODE}" = "auto" ]; then
+    if [ -d /sys/firmware/efi ]; then
+      BOOT_MODE="uefi"
+    else
+      BOOT_MODE="bios"
+    fi
+  fi
+
+  REQ_TOOLS="parted mkfs.ext4 blkid mount umount"
+  if [ "${BOOT_MODE}" = "uefi" ]; then
+    REQ_TOOLS="${REQ_TOOLS} mkfs.vfat"
+  fi
+  for tool in ${REQ_TOOLS}; do
     if ! command -v "${tool}" >/dev/null 2>&1; then
       echo "Erro: utilitário de disco obrigatório ausente no ambiente de instalação: ${tool}" >&2
       exit 1
@@ -590,7 +618,7 @@ if [ "${MODE}" = "disk" ]; then
   done
 
   if [ "${AUTO_YES}" != "true" ]; then
-    echo "ATENÇÃO: Todos os dados em ${TARGET_DISK} serão apagados para instalar o XIQI OS!"
+    echo "ATENÇÃO: Todos os dados em ${TARGET_DISK} serão apagados para instalar o XIQI OS (modo ${BOOT_MODE})!"
     printf "Digite 'INSTALAR' para confirmar: "
     read -r CONFIRM
     if [ "${CONFIRM}" != "INSTALAR" ]; then
@@ -599,61 +627,182 @@ if [ "${MODE}" = "disk" ]; then
     fi
   fi
 
-  echo "Particionando ${TARGET_DISK} (GPT: EFI 512MB + Raiz XIQI ext4)..."
-  parted -s "${TARGET_DISK}" mklabel gpt
-  parted -s "${TARGET_DISK}" mkpart ESP fat32 1MiB 513MiB
-  parted -s "${TARGET_DISK}" set 1 esp on
-  parted -s "${TARGET_DISK}" mkpart XIQI_ROOT ext4 513MiB 100%
-
-  case "${TARGET_DISK}" in
-    *nvme*|*mmcblk*)
-      PART_EFI="${TARGET_DISK}p1"
-      PART_ROOT="${TARGET_DISK}p2"
-      ;;
-    *)
-      PART_EFI="${TARGET_DISK}1"
-      PART_ROOT="${TARGET_DISK}2"
-      ;;
-  esac
-
-  sleep 2
-  mkfs.vfat -F32 -n XIQIEFI "${PART_EFI}"
-  mkfs.ext4 -F -L XIQIROOT "${PART_ROOT}"
+  for part_mounted in "${TARGET_DISK}"*; do
+    umount "${part_mounted}" 2>/dev/null || true
+  done
 
   MNT_DIR="/mnt/xiqi-target"
+  cleanup_disk_mounts() {
+    umount "${MNT_DIR}/dev" 2>/dev/null || true
+    umount "${MNT_DIR}/proc" 2>/dev/null || true
+    umount "${MNT_DIR}/sys" 2>/dev/null || true
+    umount "${MNT_DIR}/boot/efi" 2>/dev/null || true
+    umount "${MNT_DIR}" 2>/dev/null || true
+  }
+  trap cleanup_disk_mounts EXIT INT TERM
+
+  if [ "${BOOT_MODE}" = "uefi" ]; then
+    echo "Particionando ${TARGET_DISK} (GPT UEFI: EFI 512MB + Raiz XIQI ext4)..."
+    parted -s "${TARGET_DISK}" mklabel gpt
+    parted -s "${TARGET_DISK}" mkpart ESP fat32 1MiB 513MiB
+    parted -s "${TARGET_DISK}" set 1 esp on
+    parted -s "${TARGET_DISK}" mkpart XIQI_ROOT ext4 513MiB 100%
+
+    case "${TARGET_DISK}" in
+      *nvme*|*mmcblk*)
+        PART_EFI="${TARGET_DISK}p1"
+        PART_ROOT="${TARGET_DISK}p2"
+        ;;
+      *)
+        PART_EFI="${TARGET_DISK}1"
+        PART_ROOT="${TARGET_DISK}2"
+        ;;
+    esac
+  else
+    echo "Particionando ${TARGET_DISK} (MBR Legacy BIOS / Dell OptiPlex 380: Raiz XIQI ext4 inicializável)..."
+    parted -s "${TARGET_DISK}" mklabel msdos
+    parted -s "${TARGET_DISK}" mkpart primary ext4 1MiB 100%
+    parted -s "${TARGET_DISK}" set 1 boot on
+
+    case "${TARGET_DISK}" in
+      *nvme*|*mmcblk*)
+        PART_ROOT="${TARGET_DISK}p1"
+        ;;
+      *)
+        PART_ROOT="${TARGET_DISK}1"
+        ;;
+    esac
+    PART_EFI=""
+  fi
+
+  sleep 2
+  if [ -n "${PART_EFI}" ]; then
+    mkfs.vfat -F32 -n XIQIEFI "${PART_EFI}"
+  fi
+  mkfs.ext4 -F -L XIQIROOT "${PART_ROOT}"
+
   mkdir -p "${MNT_DIR}"
   mount "${PART_ROOT}" "${MNT_DIR}"
-  mkdir -p "${MNT_DIR}/boot/efi" "${MNT_DIR}/etc" "${MNT_DIR}/dev" "${MNT_DIR}/proc" "${MNT_DIR}/sys" "${MNT_DIR}/tmp"
-  mount "${PART_EFI}" "${MNT_DIR}/boot/efi"
+  mkdir -p "${MNT_DIR}/boot" "${MNT_DIR}/etc" "${MNT_DIR}/dev" "${MNT_DIR}/proc" "${MNT_DIR}/sys" "${MNT_DIR}/tmp" "${MNT_DIR}/run" "${MNT_DIR}/mnt" "${MNT_DIR}/root" "${MNT_DIR}/home" "${MNT_DIR}/var"
+  chmod 1777 "${MNT_DIR}/tmp"
+  if [ -n "${PART_EFI}" ]; then
+    mkdir -p "${MNT_DIR}/boot/efi"
+    mount "${PART_EFI}" "${MNT_DIR}/boot/efi"
+  fi
 
-  echo "Replicando sistema base para o disco do data center..."
-  for d in bin lib lib64 sbin usr; do
+  echo "Replicando sistema base para o disco do servidor..."
+  for d in bin etc lib lib64 sbin usr var; do
     if [ -d "/${d}" ]; then
       cp -a "/${d}" "${MNT_DIR}/"
     fi
   done
-  if [ -d "/boot" ]; then
+  if [ -d /boot ]; then
     cp -a /boot/* "${MNT_DIR}/boot/" 2>/dev/null || true
   fi
+  rm -f "${MNT_DIR}/etc/mtab" "${MNT_DIR}/run/"*.pid 2>/dev/null || true
 
   UUID_ROOT="$(blkid -s UUID -o value "${PART_ROOT}")"
-  UUID_EFI="$(blkid -s UUID -o value "${PART_EFI}")"
-  cat << EOF > "${MNT_DIR}/etc/fstab"
+  if [ -n "${PART_EFI}" ]; then
+    UUID_EFI="$(blkid -s UUID -o value "${PART_EFI}")"
+    cat << EOF > "${MNT_DIR}/etc/fstab"
 UUID=${UUID_ROOT}  /          ext4  defaults,noatime,errors=remount-ro  0  1
 UUID=${UUID_EFI}   /boot/efi  vfat  umask=0077                          0  2
 EOF
+  else
+    cat << EOF > "${MNT_DIR}/etc/fstab"
+UUID=${UUID_ROOT}  /          ext4  defaults,noatime,errors=remount-ro  0  1
+EOF
+  fi
+
+  mount --bind /dev "${MNT_DIR}/dev" 2>/dev/null || true
+  mount --bind /proc "${MNT_DIR}/proc" 2>/dev/null || true
+  mount --bind /sys "${MNT_DIR}/sys" 2>/dev/null || true
 
   install_xiqi_stack "${MNT_DIR}"
 
-  if command -v grub-install >/dev/null 2>&1; then
-    grub-install --target=x86_64-efi --efi-directory="${MNT_DIR}/boot/efi" --boot-directory="${MNT_DIR}/boot" --removable "${TARGET_DISK}" || \
-    grub-install --target=i386-pc --boot-directory="${MNT_DIR}/boot" "${TARGET_DISK}" || true
+  if [ -f "${MNT_DIR}/boot/extlinux.conf" ] && [ -n "${UUID_ROOT}" ]; then
+    sed -i "s|root=UUID=[^[:space:]]*|root=UUID=${UUID_ROOT}|g" "${MNT_DIR}/boot/extlinux.conf" 2>/dev/null || true
+  fi
+  if [ -f "${MNT_DIR}/boot/grub/grub.cfg" ] && [ -n "${UUID_ROOT}" ]; then
+    sed -i "s|root=UUID=[^[:space:]]*|root=UUID=${UUID_ROOT}|g" "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null || true
   fi
 
-  umount -R "${MNT_DIR}" || true
+  if [ "${BOOT_MODE}" = "uefi" ]; then
+    if command -v grub-install >/dev/null 2>&1; then
+      grub-install --target=x86_64-efi --efi-directory="${MNT_DIR}/boot/efi" --boot-directory="${MNT_DIR}/boot" --removable "${TARGET_DISK}" || true
+    fi
+  else
+    INSTALLED_BOOT="false"
+    if command -v extlinux >/dev/null 2>&1 && [ -f "${MNT_DIR}/boot/extlinux.conf" ]; then
+      for mbr_cand in /usr/share/syslinux/mbr.bin /usr/lib/syslinux/mbr/mbr.bin /usr/lib/EXTLINUX/mbr.bin; do
+        if [ -f "${mbr_cand}" ]; then
+          dd if="${mbr_cand}" of="${TARGET_DISK}" bs=440 count=1 conv=notrunc 2>/dev/null || true
+          break
+        fi
+      done
+      if extlinux --install "${MNT_DIR}/boot"; then
+        INSTALLED_BOOT="true"
+      fi
+    fi
+    if [ "${INSTALLED_BOOT}" != "true" ] && command -v grub-install >/dev/null 2>&1; then
+      grub-install --target=i386-pc --boot-directory="${MNT_DIR}/boot" "${TARGET_DISK}" || true
+    fi
+  fi
+
+  sync
+  cleanup_disk_mounts
+  trap - EXIT INT TERM
   echo "=================================================================="
-  echo "   XIQI OS INSTALADO NO DISCO ${TARGET_DISK} COM SUCESSO!"
-  echo "   Reinicie o servidor de data center para iniciar pelo XIQI OS."
+  echo "   XIQI OS INSTALADO NO DISCO ${TARGET_DISK} (${BOOT_MODE}) COM SUCESSO!"
+  echo "   Reinicie o servidor (Dell OptiPlex 380) para iniciar pelo XIQI OS."
+  echo "=================================================================="
+elif [ "${MODE}" = "update-disk" ]; then
+  if [ -z "${TARGET_DISK}" ] || [ ! -b "${TARGET_DISK}" ]; then
+    echo "Erro: especifique uma partição válida existente com --update-disk (ex: /dev/sdb1 ou /dev/sda1)." >&2
+    exit 1
+  fi
+
+  MNT_DIR="/mnt/xiqi-update"
+  cleanup_update_mounts() {
+    umount "${MNT_DIR}/dev" 2>/dev/null || true
+    umount "${MNT_DIR}/proc" 2>/dev/null || true
+    umount "${MNT_DIR}/sys" 2>/dev/null || true
+    umount "${MNT_DIR}" 2>/dev/null || true
+  }
+  trap cleanup_update_mounts EXIT INT TERM
+
+  mkdir -p "${MNT_DIR}"
+  mount -o rw "${TARGET_DISK}" "${MNT_DIR}"
+
+  if [ ! -d "${MNT_DIR}/etc" ] || [ ! -d "${MNT_DIR}/opt" ]; then
+    echo "Erro: a partição ${TARGET_DISK} não contém uma instalação raiz válida (/etc e /opt ausentes)." >&2
+    exit 1
+  fi
+
+  echo "Partição existente montada com segurança (sem formatação; dados e AreiaPreta preservados)."
+  mount --bind /dev "${MNT_DIR}/dev" 2>/dev/null || true
+  mount --bind /proc "${MNT_DIR}/proc" 2>/dev/null || true
+  mount --bind /sys "${MNT_DIR}/sys" 2>/dev/null || true
+
+  install_xiqi_stack "${MNT_DIR}"
+
+  sync
+  cleanup_update_mounts
+  trap - EXIT INT TERM
+  echo "=================================================================="
+  echo "   ATUALIZAÇÃO APLICADA NA PARTIÇÃO ${TARGET_DISK} COM SUCESSO!"
+  echo "   Banco AreiaPreta e configurações existentes foram preservados."
+  echo "=================================================================="
+elif [ "${MODE}" = "target-root" ]; then
+  if [ -z "${TARGET_ROOT_DIR}" ] || [ ! -d "${TARGET_ROOT_DIR}/etc" ]; then
+    echo "Erro: especifique um diretório raiz montado válido com --target-root (ex: /mnt/380)." >&2
+    exit 1
+  fi
+  install_xiqi_stack "${TARGET_ROOT_DIR%/}"
+  sync
+  echo "=================================================================="
+  echo "   CONFIGURAÇÕES APLICADAS EM ${TARGET_ROOT_DIR} COM SUCESSO!"
+  echo "   Banco AreiaPreta e configurações existentes foram preservados."
   echo "=================================================================="
 else
   install_xiqi_stack ""
