@@ -580,9 +580,102 @@
     }
 
     .ai-panel-actions {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .btn-sm.active-hist {
+      background-color: var(--accent-soft);
+      border-color: var(--accent-border);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .ai-history-view {
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 12px 16px 16px;
+      background-color: #ffffff;
+    }
+
+    .ai-history-top {
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .ai-history-list {
+      display: -webkit-flex;
+      display: flex;
+      -webkit-flex-direction: column;
+      flex-direction: column;
       gap: 8px;
+    }
+
+    .ai-history-item {
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 12px;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .ai-history-item:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-medium);
+    }
+
+    .ai-history-item.active {
+      background-color: var(--accent-soft);
+      border-color: var(--accent-border);
+    }
+
+    .ai-history-meta {
+      min-width: 0;
+      -webkit-flex: 1 1 auto;
+      flex: 1 1 auto;
+      text-align: left;
+    }
+
+    .ai-history-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ai-history-sub {
+      font-size: 11px;
+      color: var(--text-subtle);
+      margin-top: 2px;
+    }
+
+    .ai-history-empty {
+      font-size: 13px;
+      color: var(--text-subtle);
+      text-align: center;
+      padding: 20px 8px;
     }
 
     .ai-thread {
@@ -1199,6 +1292,7 @@
       <div class="center-actions">
         <button type="submit" class="chrome-btn" id="primarySearchBtn">Pesquisa XIQI</button>
         <button type="button" class="chrome-btn" id="quickAccessBtn">Acesso Rápido</button>
+        <button type="button" class="chrome-btn hidden" id="aiHistoryCenterBtn">Histórico IA</button>
       </div>
     </form>
 
@@ -1207,10 +1301,13 @@
       <div class="ai-panel-head">
         <span class="ai-panel-title">Modo IA — XIQI IA</span>
         <div class="ai-panel-actions">
+          <button type="button" class="btn-sm" id="aiHistoryBtn">Histórico</button>
+          <button type="button" class="btn-sm" id="aiNewChatBtn">+ Nova</button>
           <button type="button" class="btn-sm" id="aiClearBtn">Limpar</button>
           <button type="button" class="btn-sm" id="aiCloseBtn">Fechar</button>
         </div>
       </div>
+      <div class="ai-history-view hidden" id="aiHistoryView"></div>
       <div class="ai-thread" id="aiThread"></div>
     </section>
   </main>
@@ -1351,6 +1448,8 @@
           searchEngine: 'xiqi',
           aiMode: false,
           aiHistory: [],
+          aiConversations: [],
+          activeAiConvId: null,
           activeTabId: 'tab-guest-home',
           tabs: [
             { id: 'tab-guest-home', title: 'Nova Aba', type: 'newtab', url: '' }
@@ -1390,6 +1489,24 @@
         if (!SEARCH_ENGINES[session.searchEngine]) session.searchEngine = 'xiqi';
         session.aiMode = Boolean(session.aiMode);
         if (!Array.isArray(session.aiHistory)) session.aiHistory = [];
+        if (!Array.isArray(session.aiConversations)) session.aiConversations = [];
+        session.aiConversations = session.aiConversations.filter(function (c) {
+          return c && typeof c === 'object' && Array.isArray(c.messages) && c.messages.length > 0;
+        }).slice(0, 20);
+        if (session.aiHistory.length > 0 && session.aiConversations.length === 0) {
+          var firstUserMsg = session.aiHistory.find(function (m) { return m && m.role === 'user' && m.text; });
+          var migratedId = 'conv-' + Date.now();
+          session.aiConversations.unshift({
+            id: migratedId,
+            title: firstUserMsg ? String(firstUserMsg.text).slice(0, 80) : 'Conversa anterior',
+            updatedAt: new Date().toISOString(),
+            messages: session.aiHistory.slice()
+          });
+          session.activeAiConvId = migratedId;
+        }
+        if (typeof session.activeAiConvId !== 'string' || !session.activeAiConvId) {
+          session.activeAiConvId = null;
+        }
         if (!Array.isArray(session.tabs) || session.tabs.length === 0) {
           session.tabs = fallback.tabs;
           session.activeTabId = fallback.activeTabId;
@@ -1430,6 +1547,7 @@
 
       var aiLoading = false;
       var aiLastError = '';
+      var aiHistoryViewOpen = false;
       var selectedLoginUserId = '';
 
       function getCurrentUser() {
@@ -1445,6 +1563,9 @@
         }
         if (!Array.isArray(session.aiHistory)) {
           session.aiHistory = [];
+        }
+        if (!Array.isArray(session.aiConversations)) {
+          session.aiConversations = [];
         }
         return session;
       }
@@ -1743,13 +1864,150 @@
       });
 
       /* ===================================================================
-         MODO IA (CHAMADA SEGURA VIA /api/ai NO SERVIDOR)
+         MODO IA (CHAMADA SEGURA VIA /api/ai + HISTORICO DE CONVERSAS)
          =================================================================== */
+      function formatConvDate(isoStr) {
+        try {
+          var dt = new Date(isoStr);
+          if (isNaN(dt.getTime())) return '';
+          return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        } catch (err) {
+          return '';
+        }
+      }
+
+      function syncActiveConversation(session, titleHint) {
+        if (!Array.isArray(session.aiConversations)) session.aiConversations = [];
+        if (!Array.isArray(session.aiHistory) || session.aiHistory.length === 0) return;
+
+        var idx = session.activeAiConvId
+          ? session.aiConversations.findIndex(function (c) { return c && c.id === session.activeAiConvId; })
+          : -1;
+
+        var nowIso = new Date().toISOString();
+        if (idx === -1) {
+          var newId = 'conv-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+          var firstUser = session.aiHistory.find(function (m) { return m && m.role === 'user' && m.text; });
+          var title = String(titleHint || (firstUser && firstUser.text) || 'Conversa XIQI IA').trim().slice(0, 80);
+          session.activeAiConvId = newId;
+          session.aiConversations.unshift({
+            id: newId,
+            title: title,
+            updatedAt: nowIso,
+            messages: session.aiHistory.slice()
+          });
+          session.aiConversations = session.aiConversations.slice(0, 20);
+        } else {
+          var existing = session.aiConversations[idx];
+          existing.messages = session.aiHistory.slice();
+          existing.updatedAt = nowIso;
+          session.aiConversations.splice(idx, 1);
+          session.aiConversations.unshift(existing);
+        }
+      }
+
+      function renderAiHistoryList(session) {
+        var histEl = document.getElementById('aiHistoryView');
+        histEl.innerHTML = '';
+
+        var topRow = document.createElement('div');
+        topRow.className = 'ai-history-top';
+        var label = document.createElement('span');
+        label.textContent = 'Histórico de Conversas (' + (session.aiConversations || []).length + ')';
+        topRow.appendChild(label);
+
+        if (session.aiConversations && session.aiConversations.length > 0) {
+          var clearAllBtn = document.createElement('button');
+          clearAllBtn.type = 'button';
+          clearAllBtn.className = 'btn-sm';
+          clearAllBtn.style.color = '#dc2626';
+          clearAllBtn.textContent = 'Apagar tudo';
+          clearAllBtn.addEventListener('click', function () {
+            session.aiConversations = [];
+            session.activeAiConvId = null;
+            session.aiHistory = [];
+            aiLastError = '';
+            saveStore(store);
+            renderAiPanel(session);
+          });
+          topRow.appendChild(clearAllBtn);
+        }
+        histEl.appendChild(topRow);
+
+        var listData = Array.isArray(session.aiConversations) ? session.aiConversations : [];
+        if (listData.length === 0) {
+          var empty = document.createElement('div');
+          empty.className = 'ai-history-empty';
+          empty.textContent = 'Nenhuma conversa salva ainda. Envie uma pergunta no Modo IA para salvar automaticamente.';
+          histEl.appendChild(empty);
+          return;
+        }
+
+        var listWrap = document.createElement('div');
+        listWrap.className = 'ai-history-list';
+
+        listData.forEach(function (conv) {
+          if (!conv || !Array.isArray(conv.messages) || conv.messages.length === 0) return;
+          var item = document.createElement('div');
+          item.className = 'ai-history-item' + (conv.id === session.activeAiConvId ? ' active' : '');
+
+          var meta = document.createElement('div');
+          meta.className = 'ai-history-meta';
+
+          var titleEl = document.createElement('div');
+          titleEl.className = 'ai-history-title';
+          titleEl.textContent = conv.title || 'Conversa XIQI IA';
+
+          var subEl = document.createElement('div');
+          subEl.className = 'ai-history-sub';
+          var dateTxt = formatConvDate(conv.updatedAt);
+          subEl.textContent = conv.messages.length + (conv.messages.length === 1 ? ' mensagem' : ' mensagens') + (dateTxt ? (' • ' + dateTxt) : '');
+
+          meta.appendChild(titleEl);
+          meta.appendChild(subEl);
+
+          var delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'quick-del-btn';
+          delBtn.textContent = '✕';
+          delBtn.title = 'Excluir conversa';
+          delBtn.setAttribute('aria-label', 'Excluir conversa');
+          delBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            session.aiConversations = session.aiConversations.filter(function (c) { return c.id !== conv.id; });
+            if (session.activeAiConvId === conv.id) {
+              session.activeAiConvId = null;
+              session.aiHistory = [];
+            }
+            saveStore(store);
+            renderAiPanel(session);
+          });
+
+          item.addEventListener('click', function () {
+            session.activeAiConvId = conv.id;
+            session.aiHistory = conv.messages.slice();
+            aiLastError = '';
+            aiHistoryViewOpen = false;
+            saveStore(store);
+            renderAiPanel(session);
+          });
+
+          item.appendChild(meta);
+          item.appendChild(delBtn);
+          listWrap.appendChild(item);
+        });
+
+        histEl.appendChild(listWrap);
+      }
+
       function renderAiPanel(session) {
         var toggleBtn = document.getElementById('aiModeToggleBtn');
         var searchPill = document.getElementById('searchPill');
         var primaryBtn = document.getElementById('primarySearchBtn');
+        var centerHistBtn = document.getElementById('aiHistoryCenterBtn');
+        var panelHistBtn = document.getElementById('aiHistoryBtn');
         var panel = document.getElementById('aiResponsePanel');
+        var histView = document.getElementById('aiHistoryView');
         var thread = document.getElementById('aiThread');
 
         var isAiActive = Boolean(session.aiMode);
@@ -1759,14 +2017,35 @@
         primaryBtn.classList.toggle('chrome-btn-ai', isAiActive);
         primaryBtn.disabled = isAiActive && aiLoading;
         primaryBtn.textContent = isAiActive ? (aiLoading ? 'Consultando...' : 'Perguntar à IA') : 'Pesquisa XIQI';
+        if (centerHistBtn) {
+          centerHistBtn.classList.toggle('hidden', !isAiActive);
+        }
+
+        if (!isAiActive) {
+          aiHistoryViewOpen = false;
+        }
 
         var hasMessages = session.aiHistory && session.aiHistory.length > 0;
-        var shouldShowPanel = isAiActive && (hasMessages || aiLoading || aiLastError);
+        var shouldShowPanel = isAiActive && (hasMessages || aiLoading || aiLastError || aiHistoryViewOpen);
         panel.classList.toggle('hidden', !shouldShowPanel);
+
+        if (panelHistBtn) {
+          panelHistBtn.classList.toggle('active-hist', aiHistoryViewOpen);
+        }
 
         if (!shouldShowPanel) {
           return;
         }
+
+        if (aiHistoryViewOpen) {
+          thread.classList.add('hidden');
+          histView.classList.remove('hidden');
+          renderAiHistoryList(session);
+          return;
+        }
+
+        histView.classList.add('hidden');
+        thread.classList.remove('hidden');
 
         thread.innerHTML = '';
         session.aiHistory.forEach(function (msg) {
@@ -1844,9 +2123,11 @@
         var session = getActiveSession();
         var historySnapshot = (session.aiHistory || []).slice(-10);
 
+        aiHistoryViewOpen = false;
         aiLastError = '';
         aiLoading = true;
         session.aiHistory.push({ role: 'user', text: promptText });
+        syncActiveConversation(session, promptText);
         saveStore(store);
         renderAiPanel(session);
 
@@ -1868,6 +2149,7 @@
               text: data.text.trim(),
               sources: Array.isArray(data.sources) ? data.sources : []
             });
+            syncActiveConversation(session, promptText);
             saveStore(store);
           } else {
             aiLastError = 'Resposta vazia recebida do Modo IA.';
@@ -1883,6 +2165,33 @@
       document.getElementById('aiModeToggleBtn').addEventListener('click', function () {
         var session = getActiveSession();
         session.aiMode = !session.aiMode;
+        if (!session.aiMode) aiHistoryViewOpen = false;
+        aiLastError = '';
+        saveStore(store);
+        renderAiPanel(session);
+        document.getElementById('searchInput').focus();
+      });
+
+      document.getElementById('aiHistoryCenterBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        session.aiMode = true;
+        aiHistoryViewOpen = !aiHistoryViewOpen;
+        aiLastError = '';
+        renderAiPanel(session);
+      });
+
+      document.getElementById('aiHistoryBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        aiHistoryViewOpen = !aiHistoryViewOpen;
+        aiLastError = '';
+        renderAiPanel(session);
+      });
+
+      document.getElementById('aiNewChatBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        session.aiHistory = [];
+        session.activeAiConvId = null;
+        aiHistoryViewOpen = false;
         aiLastError = '';
         saveStore(store);
         renderAiPanel(session);
@@ -1892,6 +2201,8 @@
       document.getElementById('aiClearBtn').addEventListener('click', function () {
         var session = getActiveSession();
         session.aiHistory = [];
+        session.activeAiConvId = null;
+        aiHistoryViewOpen = false;
         aiLastError = '';
         saveStore(store);
         renderAiPanel(session);
@@ -1900,6 +2211,7 @@
       document.getElementById('aiCloseBtn').addEventListener('click', function () {
         var session = getActiveSession();
         session.aiMode = false;
+        aiHistoryViewOpen = false;
         aiLastError = '';
         saveStore(store);
         renderAiPanel(session);

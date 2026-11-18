@@ -490,7 +490,7 @@ function stripProtoPollution(val, depth = 0) {
 }
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '128kb' }));
+app.use(express.json({ limit: '512kb' }));
 
 app.use('/api', (req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
@@ -636,6 +636,8 @@ function createDefaultGuestSession() {
     searchEngine: 'xiqi',
     aiMode: false,
     aiHistory: [],
+    aiConversations: [],
+    activeAiConvId: null,
     notes: '',
     activeTabId: 'tab-guest-home',
     tabs: [{ id: 'tab-guest-home', title: 'Nova Aba', type: 'newtab', url: '' }],
@@ -650,6 +652,23 @@ function createDefaultGuestSession() {
 function isAllowedInternalOrPublicUrl(url) {
   const s = String(url || '').trim();
   return isSafeHttpUrl(s) || s.startsWith('/api/search?') || s.startsWith('/api/proxy?');
+}
+
+function sanitizeAiMessages(rawMsgs) {
+  if (!Array.isArray(rawMsgs)) return [];
+  return rawMsgs
+    .filter(m => m && typeof m.text === 'string')
+    .slice(-24)
+    .map(m => ({
+      role: m.role === 'model' ? 'model' : 'user',
+      text: String(m.text).slice(0, 6000),
+      sources: Array.isArray(m.sources)
+        ? m.sources.filter(src => src && isSafeHttpUrl(src.uri)).slice(0, 8).map(src => ({
+            title: String(src.title || '').slice(0, 120),
+            uri: String(src.uri).slice(0, 1000)
+          }))
+        : []
+    }));
 }
 
 function sanitizeSessionPayload(rawSession) {
@@ -683,26 +702,29 @@ function sanitizeSessionPayload(rawSession) {
           url: String(sc.url).slice(0, 2000)
         }))
     : [];
-  const aiHistory = Array.isArray(s.aiHistory)
-    ? s.aiHistory
-        .filter(m => m && typeof m.text === 'string')
-        .slice(-30)
-        .map(m => ({
-          role: m.role === 'model' ? 'model' : 'user',
-          text: String(m.text).slice(0, 8000),
-          sources: Array.isArray(m.sources)
-            ? m.sources.filter(src => src && isSafeHttpUrl(src.uri)).slice(0, 8).map(src => ({
-                title: String(src.title || '').slice(0, 120),
-                uri: String(src.uri).slice(0, 1000)
-              }))
-            : []
+  const aiHistory = sanitizeAiMessages(s.aiHistory);
+  const aiConversations = Array.isArray(s.aiConversations)
+    ? s.aiConversations
+        .filter(c => c && typeof c === 'object' && Array.isArray(c.messages) && c.messages.length > 0)
+        .slice(0, 20)
+        .map(c => ({
+          id: String(c.id || 'conv-' + Date.now()).slice(0, 64),
+          title: String(c.title || 'Conversa XIQI AI').slice(0, 80),
+          updatedAt: typeof c.updatedAt === 'string' ? c.updatedAt.slice(0, 40) : new Date().toISOString(),
+          messages: sanitizeAiMessages(c.messages)
         }))
+        .filter(c => c.messages.length > 0)
     : [];
+  const activeAiConvId = typeof s.activeAiConvId === 'string' && s.activeAiConvId.trim()
+    ? s.activeAiConvId.trim().slice(0, 64)
+    : null;
 
   return {
     searchEngine: validEngines.has(s.searchEngine) ? s.searchEngine : 'xiqi',
     aiMode: Boolean(s.aiMode),
     aiHistory,
+    aiConversations,
+    activeAiConvId,
     notes: typeof s.notes === 'string' ? s.notes.slice(0, 15000) : '',
     activeTabId: String(s.activeTabId || finalTabs[0].id).slice(0, 64),
     tabs: finalTabs,
@@ -838,6 +860,8 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
       searchEngine: 'xiqi',
       aiMode: false,
       aiHistory: [],
+      aiConversations: [],
+      activeAiConvId: null,
       notes: '',
       activeTabId: initialTabId,
       tabs: [{ id: initialTabId, title: 'Nova Aba', type: 'newtab', url: '' }],
