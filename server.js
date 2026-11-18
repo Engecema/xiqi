@@ -500,7 +500,8 @@ app.use('/api', (req, res, next) => {
   if (secFetchSite === 'cross-site') {
     return res.status(403).json({ error: 'Requisição cross-site bloqueada por política CSRF.' });
   }
-  const forwardedHost = isLocalLoopbackRequest(req) ? req.headers['x-forwarded-host'] : '';
+  const isTrustedProxy = isLocalLoopbackRequest(req) || Boolean(process.env.K_SERVICE);
+  const forwardedHost = isTrustedProxy ? req.headers['x-forwarded-host'] : '';
   const expectedHost = String(forwardedHost || req.headers.host || '').split(',')[0].trim().toLowerCase();
   const origin = req.headers.origin;
   if (origin) {
@@ -530,7 +531,16 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-DNS-Prefetch-Control', 'off');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+
+  const isTrustedProxy = isLocalLoopbackRequest(req) || Boolean(process.env.K_SERVICE);
+  const isProxiedPreview = Boolean(
+    process.env.K_SERVICE ||
+    (isTrustedProxy && (req.headers['x-forwarded-host'] || String(req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https'))
+  );
+
+  if (req.path.startsWith('/api')) {
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  }
 
   if (req.path.startsWith('/api/proxy')) {
     res.setHeader(
@@ -545,15 +555,16 @@ app.use((req, res, next) => {
     );
   } else {
     const isAdminRoute = req.path === '/admin' || req.path.startsWith('/api/admin');
-    const isLocalHost = /^(localhost|127\.0\.0\.1|xiqios)(:\d+)?$/i.test(String(req.headers.host || '').trim());
-    if (isAdminRoute && isLocalHost) {
-      res.setHeader('X-Frame-Options', 'DENY');
-    } else if (isLocalHost) {
-      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    let frameAncestors = '';
+    if (!isProxiedPreview) {
+      if (isAdminRoute) {
+        res.setHeader('X-Frame-Options', 'DENY');
+        frameAncestors = "frame-ancestors 'none';";
+      } else {
+        res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        frameAncestors = "frame-ancestors 'self';";
+      }
     }
-    const frameAncestors = isLocalHost
-      ? (isAdminRoute ? "frame-ancestors 'none';" : "frame-ancestors 'self';")
-      : '';
     res.setHeader(
       'Content-Security-Policy',
       "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; connect-src 'self'; frame-src 'self' http: https:; object-src 'none'; base-uri 'self'; form-action 'self';" +
