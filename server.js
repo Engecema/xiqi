@@ -41,28 +41,28 @@ const ADMIN_TTL_MS = 2 * 3600 * 1000;
 const MAX_PROXY_BYTES = 5 * 1024 * 1024;
 const MAX_MAP_ENTRIES = 20000;
 
-let cachedGenAI = null;
-let cachedGenAIKey = '';
-async function getGenAIClient() {
-  const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
+let cachedXiqiAI = null;
+let cachedXiqiAIKey = '';
+async function getXiqiAIClient() {
+  const apiKey = String(process.env.XIQI_AI_KEY || '').trim();
   if (!apiKey) {
-    cachedGenAI = null;
-    cachedGenAIKey = '';
+    cachedXiqiAI = null;
+    cachedXiqiAIKey = '';
     return null;
   }
-  if (!cachedGenAI || cachedGenAIKey !== apiKey) {
+  if (!cachedXiqiAI || cachedXiqiAIKey !== apiKey) {
     const { GoogleGenAI } = await import('@google/genai');
-    cachedGenAI = new GoogleGenAI({
+    cachedXiqiAI = new GoogleGenAI({
       apiKey,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-build'
+          'User-Agent': 'XIQI-OS/1.0'
         }
       }
     });
-    cachedGenAIKey = apiKey;
+    cachedXiqiAIKey = apiKey;
   }
-  return cachedGenAI;
+  return cachedXiqiAI;
 }
 
 function getMasterKey() {
@@ -1264,9 +1264,9 @@ async function withTimeout(promise, ms, label = 'Timeout') {
   }
 }
 
-async function searchWithGeminiGrounding(query) {
+async function searchWithXiqiAi(query) {
   try {
-    const ai = await getGenAIClient();
+    const ai = await getXiqiAIClient();
     if (!ai) return [];
     const response = await withTimeout(
       ai.models.generateContent({
@@ -1277,7 +1277,7 @@ async function searchWithGeminiGrounding(query) {
         }
       }),
       12000,
-      'Tempo limite na busca IA.'
+      'Tempo limite na busca XIQI AI.'
     );
     const chunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const seen = new Set();
@@ -1317,7 +1317,7 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
       items = await searchDuckDuckGo(q);
       if (items.length === 0) items = await searchBingHtml(q);
     } else {
-      items = await searchWithGeminiGrounding(q);
+      items = await searchWithXiqiAi(q);
       if (items.length === 0) items = await searchDuckDuckGo(q);
       if (items.length === 0) items = await searchBingHtml(q);
     }
@@ -1559,13 +1559,13 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
 });
 
 /* =====================================================================
-   MODO IA (API SERVER-SIDE COM GROUNDING DE PESQUISA)
+   MODO XIQI AI (API SERVER-SIDE COM GROUNDING DE PESQUISA)
    ===================================================================== */
-async function callGeminiWithRetry(ai, params, maxRetries = 1) {
+async function callXiqiAiWithRetry(ai, params, maxRetries = 1) {
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await withTimeout(ai.models.generateContent(params), 25000, 'Tempo limite excedido ao consultar a XIQI IA.');
+      return await withTimeout(ai.models.generateContent(params), 25000, 'Tempo limite excedido ao consultar a XIQI AI.');
     } catch (err) {
       lastErr = err;
       const msg = String(err?.message || '');
@@ -1585,10 +1585,10 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
     const rawHistory = Array.isArray(body.history) ? body.history : [];
     if (!prompt) return res.status(400).json({ error: 'Digite uma pergunta.' });
 
-    const ai = await getGenAIClient();
+    const ai = await getXiqiAIClient();
     if (!ai) {
       return res.status(503).json({
-        error: 'Chave GEMINI_API_KEY não configurada no servidor para o Modo IA.'
+        error: 'Chave XIQI_AI_KEY não configurada no servidor para o Modo XIQI AI.'
       });
     }
 
@@ -1605,19 +1605,19 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
       parts: [{ text: prompt }]
     });
 
-    const response = await callGeminiWithRetry(ai, {
+    const response = await callXiqiAiWithRetry(ai, {
       model: 'gemini-4-hydrogen',
       contents,
       config: {
         systemInstruction:
-          'Você é a XIQI IA, assistente oficial do sistema operacional XIQI OS (Corporação Engecema). Responda sempre em português do Brasil de forma clara, objetiva e precisa.',
+          'Você é a XIQI AI, assistente oficial do sistema operacional XIQI OS v1.0 (Corporação Engecema). Responda sempre em português do Brasil de forma clara, objetiva e precisa.',
         tools: [{ googleSearch: {} }]
       }
     });
 
     const answerText = String(response?.text || '').trim();
     if (!answerText) {
-      return res.status(502).json({ error: 'O modelo retornou uma resposta vazia.' });
+      return res.status(502).json({ error: 'A XIQI AI retornou uma resposta vazia.' });
     }
 
     const chunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
@@ -1638,16 +1638,16 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
     const rawMsg = String(err?.message || '');
     if (status === 400 || status === 403 || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('PERMISSION_DENIED')) {
       return res.status(status).json({
-        error: 'Chave GEMINI_API_KEY inválida ou sem permissão. Verifique em Settings > Secrets.'
+        error: 'Chave XIQI_AI_KEY inválida ou sem permissão no Modo XIQI AI.'
       });
     }
     if (status === 429 || rawMsg.includes('RESOURCE_EXHAUSTED')) {
       return res.status(429).json({
-        error: 'Limite de requisições da API Gemini atingido. Tente novamente em instantes.'
+        error: 'Limite de requisições da XIQI AI atingido. Tente novamente em instantes.'
       });
     }
     res.status(502).json({
-      error: 'Falha ao consultar a XIQI IA: ' + (rawMsg || 'erro inesperado no servidor.')
+      error: 'Falha ao consultar a XIQI AI: ' + (rawMsg || 'erro inesperado no servidor.')
     });
   }
 });

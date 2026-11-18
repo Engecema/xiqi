@@ -150,6 +150,7 @@ case "${1:-status}" in
     fi
     export PORT="${PORT:-3000}"
     export XIQI_CONFIG_DIR="${XIQI_CONF}"
+    export XIQI_AI_KEY="${XIQI_AI_KEY:-}"
     nohup node "${XIQI_APP}/server.js" >> "${LOG_FILE}" 2>&1 &
     echo $! > "${PID_FILE}"
     echo "XIQI OS iniciado na porta ${PORT} (PID $!)."
@@ -199,6 +200,7 @@ Type=simple
 WorkingDirectory=/opt/xiqi/app
 Environment=PORT=3000
 Environment=XIQI_CONFIG_DIR=/opt/xiqi/config
+Environment=XIQI_AI_KEY=
 ExecStart=/usr/local/bin/node /opt/xiqi/app/server.js
 Restart=always
 RestartSec=3
