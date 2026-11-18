@@ -42,7 +42,7 @@ if [ ! -f "${TARGET_ROOT}/etc/hosts" ]; then
 EOF
 fi
 
-echo "[3/4] Substituindo banners de login (/etc/issue e /etc/motd)..."
+echo "[3/4] Substituindo banners de sistema (/etc/issue e /etc/motd)..."
 cat << 'EOF' > "${TARGET_ROOT}/etc/issue"
 
 ================================================================
@@ -70,6 +70,10 @@ ROLE="Corporate Operating System"
 SYSTEM_TYPE="Data Center Bare-Metal"
 ORGANIZATION="Corporação Engecema"
 INDEPENDENT_BUILD="true"
+DISPLAY_MODE="direct-browser"
+DISPLAY_USER="xiqi"
+DISPLAY_ENTRY="http://127.0.0.1:3000"
+DEFAULT_PERSONAL_USER="none"
 EOF
 
 chmod 644 "${TARGET_ROOT}/etc/os-release" \

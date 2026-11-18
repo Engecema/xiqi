@@ -58,11 +58,39 @@ echo "   XIQI OS v1.0 — INSTALADOR OFICIAL INDEPENDENTE (DATA CENTER)"
 echo "   Arquitetura: x86_64 | Organização: Corporação Engecema"
 echo "=================================================================="
 
+create_neutral_xiqi_user() {
+  ROOT_PREFIX="${1:-}"
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if ! id -u xiqi >/dev/null 2>&1; then
+      adduser -D -s /bin/sh xiqi 2>/dev/null || useradd -m -s /bin/sh xiqi
+    fi
+    for grp in video input tty audio render; do
+      if grep -q "^${grp}:" /etc/group 2>/dev/null; then
+        addgroup xiqi "${grp}" 2>/dev/null || usermod -aG "${grp}" xiqi 2>/dev/null || true
+      fi
+    done
+  else
+    if command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+      if ! chroot "${ROOT_PREFIX}" id -u xiqi >/dev/null 2>&1; then
+        chroot "${ROOT_PREFIX}" adduser -D -s /bin/sh xiqi 2>/dev/null || \
+        chroot "${ROOT_PREFIX}" useradd -m -s /bin/sh xiqi 2>/dev/null || true
+      fi
+      for grp in video input tty audio render; do
+        if grep -q "^${grp}:" "${ROOT_PREFIX}/etc/group" 2>/dev/null; then
+          chroot "${ROOT_PREFIX}" addgroup xiqi "${grp}" 2>/dev/null || \
+          chroot "${ROOT_PREFIX}" usermod -aG "${grp}" xiqi 2>/dev/null || true
+        fi
+      done
+    fi
+  fi
+  mkdir -p "${ROOT_PREFIX}/home/xiqi"
+}
+
 install_xiqi_stack() {
   ROOT_PREFIX="${1:-}"
   XIQI_BASE="${ROOT_PREFIX}/opt/xiqi"
 
-  echo "[1/6] Criando hierarquia oficial de diretórios XIQI OS..."
+  echo "[1/7] Criando hierarquia oficial de diretórios XIQI OS..."
   mkdir -p \
     "${XIQI_BASE}/app" \
     "${XIQI_BASE}/bin" \
@@ -72,10 +100,14 @@ install_xiqi_stack() {
     "${XIQI_BASE}/storage/profiles" \
     "${XIQI_BASE}/logs"
 
-  chmod 750 "${XIQI_BASE}" "${XIQI_BASE}/config" "${XIQI_BASE}/config/profiles" \
-            "${XIQI_BASE}/storage/profiles" "${XIQI_BASE}/logs"
+  chmod 755 "${XIQI_BASE}" "${XIQI_BASE}/app"
+  chmod 750 "${XIQI_BASE}/config" "${XIQI_BASE}/config/profiles" \
+            "${XIQI_BASE}/storage" "${XIQI_BASE}/storage/profiles" "${XIQI_BASE}/logs"
 
-  echo "[2/6] Verificando runtime Node.js x86_64 independente..."
+  echo "[2/7] Configurando usuário de sistema neutro 'xiqi'..."
+  create_neutral_xiqi_user "${ROOT_PREFIX}"
+
+  echo "[3/7] Verificando runtime Node.js x86_64 independente..."
   if [ -z "${ROOT_PREFIX}" ] && ! command -v node >/dev/null 2>&1; then
     ARCH="$(uname -m)"
     if [ "${ARCH}" = "x86_64" ]; then
@@ -97,12 +129,15 @@ install_xiqi_stack() {
     ln -sf "${XIQI_BASE}/runtime/bin/npm" /usr/local/bin/npm
   fi
 
-  echo "[3/6] Copiando aplicação e núcleo XIQI OS para ${XIQI_BASE}/app..."
+  echo "[4/7] Copiando aplicação e núcleo XIQI OS para ${XIQI_BASE}/app..."
   for f in package.json package-lock.json server.js index.html admin.html xiqi-browser.py .env.example; do
     if [ -f "${SCRIPT_DIR}/${f}" ]; then
       cp -f "${SCRIPT_DIR}/${f}" "${XIQI_BASE}/app/${f}"
     fi
   done
+  if [ -f "${XIQI_BASE}/app/xiqi-browser.py" ]; then
+    chmod 755 "${XIQI_BASE}/app/xiqi-browser.py"
+  fi
   if [ -d "${SCRIPT_DIR}/node_modules" ]; then
     rm -rf "${XIQI_BASE}/app/node_modules"
     cp -a "${SCRIPT_DIR}/node_modules" "${XIQI_BASE}/app/node_modules"
@@ -110,7 +145,7 @@ install_xiqi_stack() {
     (cd "${XIQI_BASE}/app" && npm install --omit=dev)
   fi
 
-  echo "[4/6] Inicializando base de perfis e configuração de rede..."
+  echo "[5/7] Inicializando base neutra de perfis e configuração de rede..."
   if [ ! -f "${XIQI_BASE}/config/profiles.json" ]; then
     cat << 'EOF' > "${XIQI_BASE}/config/profiles.json"
 {
@@ -133,7 +168,7 @@ EOF
     chmod 644 "${XIQI_BASE}/config/network.conf"
   fi
 
-  echo "[5/6] Instalando controlador nativo de serviços (xiqictl) e unit systemd..."
+  echo "[6/7] Configurando controlador nativo e boot gráfico direto no navegador XIQI OS..."
   cat << 'EOF' > "${XIQI_BASE}/bin/xiqictl"
 #!/bin/sh
 set -eu
@@ -188,6 +223,139 @@ EOF
   mkdir -p "${ROOT_PREFIX}/usr/local/bin"
   ln -sf "/opt/xiqi/bin/xiqictl" "${ROOT_PREFIX}/usr/local/bin/xiqictl"
 
+  # Configuração de sessão gráfica direta via startx + xfwm4 + xiqi-browser.py (sem tela de login do SO)
+  mkdir -p "${ROOT_PREFIX}/etc/X11" "${ROOT_PREFIX}/home/xiqi"
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/X11/Xwrapper.config"
+allowed_users=anybody
+needs_root_rights=yes
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/X11/Xwrapper.config"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/home/xiqi/.xinitrc"
+#!/bin/sh
+export HOME=/home/xiqi
+export USER=xiqi
+export DISPLAY="${DISPLAY:-:0}"
+export XIQI_URL="http://127.0.0.1:3000"
+export XIQI_FULLSCREEN="1"
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export WEBKIT_FORCE_SANDBOX=0
+export LIBGL_ALWAYS_SOFTWARE=1
+
+if command -v xset >/dev/null 2>&1; then
+  xset s off -dpms s noblank 2>/dev/null || true
+fi
+
+# Gerenciador de janelas mínimo xfwm4 (sem painéis, sem rodapés externos)
+xfwm4 --compositor=off >/dev/null 2>&1 &
+sleep 1
+
+# Aguarda o servidor XIQI OS responder na porta 3000 antes de abrir o navegador
+i=0
+while [ "$i" -lt 30 ]; do
+  if command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:3000/api/system >/dev/null 2>&1; then
+    break
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+
+exec /usr/bin/python3 /opt/xiqi/app/xiqi-browser.py
+EOF
+  chmod 755 "${ROOT_PREFIX}/home/xiqi/.xinitrc"
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+    chroot "${ROOT_PREFIX}" chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true
+  fi
+
+  # Serviços nativos OpenRC (/etc/init.d/xiqios e /etc/init.d/xiqi-display)
+  mkdir -p "${ROOT_PREFIX}/etc/init.d"
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqios"
+#!/sbin/openrc-run
+
+name="xiqios"
+description="XIQI OS Corporate Server (Corporação Engecema)"
+command="/usr/local/bin/node"
+command_args="/opt/xiqi/app/server.js"
+command_background="yes"
+pidfile="/run/xiqios.pid"
+output_log="/opt/xiqi/logs/xiqios.log"
+error_log="/opt/xiqi/logs/xiqios.log"
+
+export PORT="${PORT:-3000}"
+export XIQI_CONFIG_DIR="${XIQI_CONFIG_DIR:-/opt/xiqi/config}"
+export XIQI_AI_KEY="${XIQI_AI_KEY:-}"
+
+depend() {
+  need net
+  after firewall
+}
+
+start_pre() {
+  mkdir -p /opt/xiqi/logs /opt/xiqi/config
+}
+EOF
+  chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqios"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqi-display"
+#!/sbin/openrc-run
+
+name="xiqi-display"
+description="XIQI OS Direct Browser Display (Corporação Engecema)"
+pidfile="/run/xiqi-display.pid"
+
+depend() {
+  need localmount
+  after net xiqios
+}
+
+start() {
+  ebegin "Iniciando interface gráfica direta XIQI OS (usuário neutro xiqi)"
+  mkdir -p /opt/xiqi/logs /tmp/.X11-unix
+  chmod 1777 /tmp/.X11-unix
+  chown xiqi:xiqi /home/xiqi /home/xiqi/.xinitrc 2>/dev/null || true
+  touch /opt/xiqi/logs/xiqi-display.log
+  chown xiqi:xiqi /opt/xiqi/logs/xiqi-display.log 2>/dev/null || true
+
+  start-stop-daemon --start --background --make-pidfile \
+    --pidfile "${pidfile}" \
+    --user xiqi --group xiqi \
+    --env HOME=/home/xiqi \
+    --env USER=xiqi \
+    --env XIQI_URL=http://127.0.0.1:3000 \
+    --env XIQI_FULLSCREEN=1 \
+    --stdout /opt/xiqi/logs/xiqi-display.log \
+    --stderr /opt/xiqi/logs/xiqi-display.log \
+    --exec /bin/sh -- -c 'exec /usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp'
+  eend $?
+}
+
+stop() {
+  ebegin "Encerrando interface gráfica direta XIQI OS"
+  start-stop-daemon --stop --quiet --pidfile "${pidfile}"
+  eend $?
+}
+EOF
+  chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqi-display"
+
+  if [ -z "${ROOT_PREFIX}" ] && command -v rc-update >/dev/null 2>&1; then
+    for old_dm in lightdm gdm sddm; do
+      rc-update del "${old_dm}" default 2>/dev/null || true
+    done
+    rc-update add xiqios default || true
+    rc-update add xiqi-display default || true
+  elif [ -n "${ROOT_PREFIX}" ] && command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+    for old_dm in lightdm gdm sddm; do
+      chroot "${ROOT_PREFIX}" rc-update del "${old_dm}" default 2>/dev/null || true
+    done
+    chroot "${ROOT_PREFIX}" rc-update add xiqios default || true
+    chroot "${ROOT_PREFIX}" rc-update add xiqi-display default || true
+  fi
+
+  # Units systemd para compatibilidade em servidores systemd
   mkdir -p "${ROOT_PREFIX}/etc/systemd/system"
   cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqios.service"
 [Unit]
@@ -209,13 +377,40 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-display.service"
+[Unit]
+Description=XIQI OS Direct Browser Display (Corporação Engecema)
+After=xiqios.service
+Wants=xiqios.service
+
+[Service]
+Type=simple
+User=xiqi
+Group=xiqi
+WorkingDirectory=/home/xiqi
+Environment=HOME=/home/xiqi
+Environment=USER=xiqi
+Environment=XIQI_URL=http://127.0.0.1:3000
+Environment=XIQI_FULLSCREEN=1
+ExecStart=/usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target
+EOF
+
   if [ -z "${ROOT_PREFIX}" ] && command -v systemctl >/dev/null 2>&1; then
+    for old_dm in lightdm gdm sddm; do
+      systemctl disable "${old_dm}" 2>/dev/null || true
+    done
     systemctl daemon-reload || true
     systemctl enable xiqios.service || true
+    systemctl enable xiqi-display.service || true
     systemctl restart xiqios.service || true
   fi
 
-  echo "[6/6] Aplicando identidade oficial XIQI OS..."
+  echo "[7/7] Aplicando identidade oficial XIQI OS..."
   if [ -f "${SCRIPT_DIR}/branding-xiqi.sh" ]; then
     chmod 750 "${SCRIPT_DIR}/branding-xiqi.sh"
     sh "${SCRIPT_DIR}/branding-xiqi.sh" "${ROOT_PREFIX}"
@@ -308,6 +503,6 @@ else
   install_xiqi_stack ""
   echo "=================================================================="
   echo "   XIQI OS CONFIGURADO COM SUCESSO NO SERVIDOR LOCAL!"
-  echo "   Iniciar serviço: xiqictl start (ou systemctl start xiqios)"
+  echo "   Iniciar serviço: xiqictl start (ou service xiqi-display start)"
   echo "=================================================================="
 fi

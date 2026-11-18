@@ -10,8 +10,9 @@ os.environ["LIBGL_ALWAYS_SOFTWARE"] = "1"
 
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
 gi.require_version('WebKit2', '4.1')
-from gi.repository import Gtk, WebKit2
+from gi.repository import Gtk, Gdk, WebKit2
 
 DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 BASE_URL = DEFAULT_HOME.rstrip("/")
@@ -28,6 +29,9 @@ class XiqiBrowser(Gtk.Window):
         self.set_default_size(1280, 800)
         self.maximize()
         self.connect("destroy", Gtk.main_quit)
+        self.connect("key-press-event", self.on_key_press)
+
+        self.is_fullscreen = os.environ.get("XIQI_FULLSCREEN", "1") == "1"
 
         self.ctx = WebKit2.WebContext.new_ephemeral()
         tls_policy = (
@@ -72,6 +76,19 @@ class XiqiBrowser(Gtk.Window):
         self.add_tab(DEFAULT_HOME, "XIQI OS v1.0")
         self.notebook.set_current_page(0)
         self.show_all()
+        if self.is_fullscreen:
+            self.fullscreen()
+
+    def on_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_F11:
+            if self.is_fullscreen:
+                self.unfullscreen()
+                self.is_fullscreen = False
+            else:
+                self.fullscreen()
+                self.is_fullscreen = True
+            return True
+        return False
 
     def current_webview(self):
         idx = self.notebook.get_current_page()
