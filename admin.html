@@ -69,39 +69,70 @@ function tab(n) {
     $("t" + i).className = i === n ? "on" : "";
     $("v" + i).className = i === n ? "" : "hide";
   });
+  $("m1").textContent = "";
+  $("m2").textContent = "";
+  $("m3").textContent = "";
 }
 $("t1").onclick = () => tab(1);
 $("t2").onclick = () => tab(2);
 $("t3").onclick = () => tab(3);
 async function load() {
-  const r = await fetch("/api/admin/users", { headers: { "x-admin-key": tk } });
-  const d = await r.json();
-  const u = d.users || [];
-  $("list").innerHTML = u.length ? "" : "<p style='color:#71717a;font-size:13px'>Nenhum usuário cadastrado.</p>";
-  u.forEach(x => {
-    const div = document.createElement("div");
-    div.className = "row";
-    const sp = document.createElement("span"); const b1 = document.createElement("b"); b1.textContent = x.name; const sm = document.createElement("small"); sm.textContent = x.identifier; sp.appendChild(b1); sp.appendChild(document.createElement("br")); sp.appendChild(sm); div.appendChild(sp);
-    const b = document.createElement("button");
-    b.className = "del"; b.textContent = "Excluir";
-    b.onclick = async () => { await fetch("/api/admin/users/" + encodeURIComponent(x.id), { method: "DELETE", headers: { "x-admin-key": tk } }); load(); };
-    div.appendChild(b); $("list").appendChild(div);
-  });
+  try {
+    const r = await fetch("/api/admin/users", { headers: { "x-admin-key": tk } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      tk = "";
+      $("panelBox").className = "box hide";
+      $("authBox").className = "box";
+      $("m1").textContent = d.error || "Sessão administrativa expirada.";
+      return;
+    }
+    const u = d.users || [];
+    $("list").innerHTML = u.length ? "" : "<p style='color:#71717a;font-size:13px'>Nenhum usuário cadastrado.</p>";
+    u.forEach(x => {
+      const div = document.createElement("div");
+      div.className = "row";
+      const sp = document.createElement("span"); const b1 = document.createElement("b"); b1.textContent = x.name; const sm = document.createElement("small"); sm.textContent = x.identifier; sp.appendChild(b1); sp.appendChild(document.createElement("br")); sp.appendChild(sm); div.appendChild(sp);
+      const b = document.createElement("button");
+      b.className = "del"; b.textContent = "Excluir";
+      b.onclick = async () => {
+        try {
+          await fetch("/api/admin/users/" + encodeURIComponent(x.id), { method: "DELETE", headers: { "x-admin-key": tk } });
+          load();
+        } catch (e) {}
+      };
+      div.appendChild(b); $("list").appendChild(div);
+    });
+  } catch (e) {
+    $("list").innerHTML = "<p style='color:#dc2626;font-size:13px'>Erro de comunicação com o servidor.</p>";
+  }
 }
 $("btnLogin").onclick = async () => {
   $("m1").textContent = "";
-  const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: $("lEmail").value, password: $("lPass").value }) });
-  const d = await r.json();
-  if (!r.ok) { $("m1").textContent = d.error || "Erro"; return; }
-  tk = d.token; $("authBox").className = "box hide"; $("panelBox").className = "box"; load();
+  try {
+    const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: $("lEmail").value, password: $("lPass").value }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { $("m1").textContent = d.error || "Erro"; return; }
+    tk = d.token; $("authBox").className = "box hide"; $("panelBox").className = "box"; load();
+  } catch (e) {
+    $("m1").textContent = "Erro de comunicação com o servidor.";
+  }
 };
 $("btnReg").onclick = async () => {
-  const r = await fetch("/api/admin/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("rName").value, email: $("rEmail").value, password: $("rPass").value, masterKey: $("rKey").value }) });
-  const d = await r.json(); $("m2").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m2").textContent = r.ok ? "Cadastrado com sucesso!" : (d.error || "Erro");
+  try {
+    const r = await fetch("/api/admin/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("rName").value, email: $("rEmail").value, password: $("rPass").value, masterKey: $("rKey").value }) });
+    const d = await r.json().catch(() => ({})); $("m2").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m2").textContent = r.ok ? "Cadastrado com sucesso!" : (d.error || "Erro");
+  } catch (e) {
+    $("m2").style.color = "#dc2626"; $("m2").textContent = "Erro de comunicação com o servidor.";
+  }
 };
 $("btnReset").onclick = async () => {
-  const r = await fetch("/api/admin/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: $("fEmail").value, masterKey: $("fKey").value, newPassword: $("fPass").value }) });
-  const d = await r.json(); $("m3").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m3").textContent = r.ok ? "Senha alterada!" : (d.error || "Erro");
+  try {
+    const r = await fetch("/api/admin/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: $("fEmail").value, masterKey: $("fKey").value, newPassword: $("fPass").value }) });
+    const d = await r.json().catch(() => ({})); $("m3").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m3").textContent = r.ok ? "Senha alterada!" : (d.error || "Erro");
+  } catch (e) {
+    $("m3").style.color = "#dc2626"; $("m3").textContent = "Erro de comunicação com o servidor.";
+  }
 };
 $("btnOut").onclick = async () => {
   if (tk) {

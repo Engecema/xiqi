@@ -13,7 +13,7 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('WebKit2', '4.1')
 from gi.repository import Gtk, WebKit2
 
-DEFAULT_HOME = os.environ.get("XIQI_URL", "https://xiqios/").strip() or "https://xiqios/"
+DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 BASE_URL = DEFAULT_HOME.rstrip("/")
 
 URL_PATTERN = re.compile(
@@ -24,7 +24,7 @@ URL_PATTERN = re.compile(
 
 class XiqiBrowser(Gtk.Window):
     def __init__(self):
-        super().__init__(title="Navegador XIQI OS")
+        super().__init__(title="Navegador XIQI OS v1.0 — Corporação Engecema")
         self.set_default_size(1280, 800)
         self.maximize()
         self.connect("destroy", Gtk.main_quit)
@@ -61,7 +61,7 @@ class XiqiBrowser(Gtk.Window):
         toolbar.pack_start(self.url_entry, True, True, 4)
 
         btn_new = Gtk.Button(label="+ Nova Aba")
-        btn_new.connect("clicked", lambda w: self.add_tab(DEFAULT_HOME, "XIQI OS"))
+        btn_new.connect("clicked", lambda w: self.add_tab(DEFAULT_HOME, "XIQI OS v1.0"))
         toolbar.pack_start(btn_new, False, False, 0)
 
         self.notebook = Gtk.Notebook()
@@ -69,7 +69,7 @@ class XiqiBrowser(Gtk.Window):
         self.notebook.connect("switch-page", self.on_switch_page)
         vbox.pack_start(self.notebook, True, True, 0)
 
-        self.add_tab(DEFAULT_HOME, "XIQI OS")
+        self.add_tab(DEFAULT_HOME, "XIQI OS v1.0")
         self.notebook.set_current_page(0)
         self.show_all()
 
@@ -86,7 +86,7 @@ class XiqiBrowser(Gtk.Window):
 
     def safe_load(self, uri):
         wv = self.current_webview()
-        if wv is not None:
+        if wv is not None and isinstance(uri, str) and re.match(r'^https?://', uri, re.IGNORECASE):
             wv.load_uri(uri)
 
     def create_configured_webview(self, related=None):
@@ -103,7 +103,7 @@ class XiqiBrowser(Gtk.Window):
         st.set_enable_webgl(True)
         st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.NEVER)
         st.set_user_agent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            "XIQI-Browser/1.0 (XIQI OS v1.0; XIQI Core x86_64; Corporacao Engecema)"
         )
         return wv
 
@@ -142,6 +142,8 @@ class XiqiBrowser(Gtk.Window):
         t = entry.get_text().strip()
         if not t:
             return
+        if re.match(r'^(javascript|data|vbscript|file):', t, re.IGNORECASE):
+            return
         if " " not in t and URL_PATTERN.match(t):
             if t.startswith(("http://", "https://")):
                 url = t
@@ -150,7 +152,7 @@ class XiqiBrowser(Gtk.Window):
             else:
                 url = "https://" + t
         else:
-            url = BASE_URL + "/api/search?engine=google&q=" + urllib.parse.quote_plus(t)
+            url = BASE_URL + "/api/search?engine=xiqi&q=" + urllib.parse.quote_plus(t)
         self.safe_load(url)
 
     def on_switch_page(self, nb, page, num):

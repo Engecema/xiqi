@@ -344,7 +344,7 @@
     }
 
     /* =====================================================================
-       CENTRO MINIMALISTA ESTILO GOOGLE CHROME + MODO IA
+       CENTRO MINIMALISTA XIQI OS + MODO IA
        ===================================================================== */
     .chrome-center {
       flex: 1 0 auto;
@@ -1092,7 +1092,7 @@
     </div>
   </header>
 
-  <!-- Centro Limpo Estilo Google Chrome + Modo IA -->
+  <!-- Centro Limpo XIQI OS + Modo IA -->
   <main class="chrome-center" id="chromeCenterView">
     <h1 class="xiqi-wordmark notranslate" translate="no">XIQI</h1>
 
@@ -1179,7 +1179,7 @@
       <div class="form-group">
         <label class="form-label" for="quickEngineSelect">Motor de busca padrão</label>
         <select class="form-input notranslate" translate="no" id="quickEngineSelect">
-          <option value="google">Google</option>
+          <option value="xiqi">Pesquisa XIQI</option>
           <option value="duckduckgo">DuckDuckGo</option>
           <option value="bing">Bing</option>
         </select>
@@ -1210,7 +1210,7 @@
       var AVATAR_PALETTE = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#0d9488', '#dc2626'];
 
       var SEARCH_ENGINES = {
-        google: { name: 'Google', url: '/api/search?engine=google&q=' },
+        xiqi: { name: 'Pesquisa XIQI', url: '/api/search?engine=xiqi&q=' },
         duckduckgo: { name: 'DuckDuckGo', url: '/api/search?engine=duckduckgo&q=' },
         bing: { name: 'Bing', url: '/api/search?engine=bing&q=' }
       };
@@ -1264,7 +1264,7 @@
          =================================================================== */
       function createDefaultSession() {
         return {
-          searchEngine: 'google',
+          searchEngine: 'xiqi',
           aiMode: false,
           aiHistory: [],
           activeTabId: 'tab-guest-home',
@@ -1272,10 +1272,9 @@
             { id: 'tab-guest-home', title: 'Nova Aba', type: 'newtab', url: '' }
           ],
           shortcuts: [
-            { id: 'sc-g1', name: 'GitHub', url: 'https://github.com' },
-            { id: 'sc-g2', name: 'Google', url: 'https://www.google.com' },
-            { id: 'sc-g3', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
-            { id: 'sc-g4', name: 'Wikipédia', url: 'https://pt.wikipedia.org' }
+            { id: 'sc-g1', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
+            { id: 'sc-g2', name: 'Bing', url: 'https://www.bing.com' },
+            { id: 'sc-g3', name: 'Wikipédia', url: 'https://pt.wikipedia.org' }
           ]
         };
       }
@@ -1304,7 +1303,7 @@
       function sanitizeSession(session) {
         var fallback = createDefaultSession();
         if (!session || typeof session !== 'object') return fallback;
-        if (!SEARCH_ENGINES[session.searchEngine]) session.searchEngine = 'google';
+        if (!SEARCH_ENGINES[session.searchEngine]) session.searchEngine = 'xiqi';
         session.aiMode = Boolean(session.aiMode);
         if (!Array.isArray(session.aiHistory)) session.aiHistory = [];
         if (!Array.isArray(session.tabs) || session.tabs.length === 0) {
@@ -1699,7 +1698,7 @@
           if (msg.role === 'model') {
             bubble.style.whiteSpace = 'pre-line';
             String(msg.text || '').split(/(https?:\/\/[^\s)]+)/g).forEach(function (part) {
-              if (/^https?:\/\//.test(part)) {
+              if (/^https?:\/\//i.test(part) && isSafeHttpUrl(part)) {
                 var a = document.createElement('a');
                 a.href = part;
                 a.textContent = part;
@@ -2057,17 +2056,18 @@
         if (!e.data || typeof e.data !== 'object') return;
         if (e.data.type === 'xiqi-open-url' && e.origin === window.location.origin && isSafeHttpUrl(e.data.url)) {
           openUrlInNewTab(e.data.url, e.data.title || extractDomain(e.data.url));
-        } else if (e.data.type === 'xiqi-proxy-navigate' && /^https?:\/\//i.test(String(e.data.url || ''))) {
+        } else if (e.data.type === 'xiqi-proxy-navigate' && typeof e.data.url === 'string' && /^https?:\/\//i.test(e.data.url) && isSafeHttpUrl(e.data.url)) {
+          var safeNavUrl = e.data.url.slice(0, 2000);
           var session = getActiveSession();
           var tab = session.tabs.find(function (t) { return t.id === session.activeTabId; });
           if (tab && tab.type === 'web' && tab.useProxy) {
             if (!Array.isArray(tab.history)) tab.history = [tab.url];
-            tab.history.push(e.data.url);
+            tab.history.push(safeNavUrl);
             tab.historyIndex = tab.history.length - 1;
-            tab.url = e.data.url;
-            tab.proxyDecidedFor = e.data.url;
-            document.getElementById('tabUrlInput').value = e.data.url;
-            document.getElementById('webExternalLink').href = e.data.url;
+            tab.url = safeNavUrl;
+            tab.proxyDecidedFor = safeNavUrl;
+            document.getElementById('tabUrlInput').value = safeNavUrl;
+            document.getElementById('webExternalLink').href = safeNavUrl;
             saveStore(store);
           }
         } else if (e.data.type === 'xiqi-proxy-loaded' && e.data.title) {
@@ -2098,8 +2098,8 @@
           return;
         }
 
-        var engineKey = session.searchEngine || 'google';
-        var engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
+        var engineKey = session.searchEngine || 'xiqi';
+        var engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.xiqi;
 
         if (looksLikeUrl(query)) {
           var targetUrl = normalizeSafeHttpUrl(query);
@@ -2119,8 +2119,8 @@
         var raw = document.getElementById('tabUrlInput').value.trim();
         if (!raw) return;
         var session = getActiveSession();
-        var engineKey = session.searchEngine || 'google';
-        var engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.google;
+        var engineKey = session.searchEngine || 'xiqi';
+        var engine = SEARCH_ENGINES[engineKey] || SEARCH_ENGINES.xiqi;
         if (looksLikeUrl(raw) || raw.startsWith('/api/')) {
           var url = normalizeSafeHttpUrl(raw);
           if (url) navigateActiveTab(url, extractDomain(url));
@@ -2197,7 +2197,7 @@
         document.getElementById('quickAccessOwner').textContent = user
           ? ('Atalhos isolados de ' + user.name)
           : 'Atalhos da sessão atual';
-        document.getElementById('quickEngineSelect').value = session.searchEngine || 'google';
+        document.getElementById('quickEngineSelect').value = session.searchEngine || 'xiqi';
 
         var grid = document.getElementById('quickShortcutsGrid');
         grid.innerHTML = '';
@@ -2335,12 +2335,12 @@
         return;
       }
       wn.style.display = "flex";
-      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);fetch("/api/notes").then(function(r){return r.json()}).then(function(d){ta.value=d.text||""});sb.onclick=async function(){st.textContent="Salvando...";var r=await fetch("/api/notes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ta.value})});st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";};}
+      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);fetch("/api/notes").then(function(r){return r.ok?r.json():{}}).then(function(d){ta.value=(d&&d.text)||""}).catch(function(){st.style.color="#dc2626";st.textContent="Erro ao carregar notas"});sb.onclick=async function(){st.style.color="#16a34a";st.textContent="Salvando...";try{var r=await fetch("/api/notes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ta.value})});if(!r.ok){st.style.color="#dc2626";}st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";}catch(err){st.style.color="#dc2626";st.textContent="Falha de comunicação";}};}
       else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m.at(1)),op=m.at(2),numB=Number(m.at(3));var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
-      else if(a==="sys"){wt.textContent="Sistema — XIQI OS";wb.textContent="Consultando...";var r=await fetch("/api/system");var d=await r.json();wb.style.whiteSpace="pre-line";wb.textContent=d.text||"XIQI OS ativo.";}
+      else if(a==="sys"){wt.textContent="Sistema — XIQI OS";wb.textContent="Consultando...";try{var r=await fetch("/api/system");var d=await r.json();wb.style.whiteSpace="pre-line";wb.textContent=d.text||"XIQI OS ativo.";}catch(err){wb.textContent="Não foi possível consultar o status do sistema.";}}
       else if(a==="cal"){wt.textContent="Data e Hora";wb.textContent=new Date().toLocaleString("pt-BR");}
-      else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (XIQI OS)":"Terminal (Console Seguro)";var kl=document.createElement("label");kl.textContent="Chave Mestra";kl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ki=document.createElement("input");ki.type="password";ki.autocomplete="off";ki.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px";var pr=document.createElement("pre");pr.style.cssText="background:#0f172a;color:#4ade80;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Informe a Chave Mestra acima e clique em Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls":"help";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace";var rb=document.createElement("button");rb.type="button";rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";var runCmd=async function(){var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json().catch(function(){return {output:"Erro de comunicação"}});pr.textContent=d.output||"(ok)"};rb.onclick=runCmd;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCmd();}});wb.appendChild(kl);wb.appendChild(ki);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}
-      else if(a==="about"){wt.textContent="Sobre o Sistema";wb.textContent="XIQI OS Core x86_64 (Edição Data Center Independente) — Corporação Engecema";}
+      else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (XIQI OS)":"Terminal (Console Seguro)";var kl=document.createElement("label");kl.textContent="Chave Mestra";kl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ki=document.createElement("input");ki.type="password";ki.autocomplete="off";ki.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px";var pr=document.createElement("pre");pr.style.cssText="background:#0f172a;color:#4ade80;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Informe a Chave Mestra acima e clique em Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls":"help";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace";var rb=document.createElement("button");rb.type="button";rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";var runCmd=async function(){try{var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json().catch(function(){return {output:"Erro de comunicação"}});pr.textContent=d.output||"(ok)";}catch(err){pr.textContent="Erro de comunicação com o servidor";}};rb.onclick=runCmd;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCmd();}});wb.appendChild(kl);wb.appendChild(ki);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}
+      else if(a==="about"){wt.textContent="Sobre o Sistema";wb.textContent="XIQI OS v1.0 — Núcleo XIQI Core x86_64 (Edição Data Center Independente) — Corporação Engecema";}
     };
   });
 })();

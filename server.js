@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const os = require('os');
 const dns = require('dns').promises;
 const net = require('net');
+const http = require('http');
+const https = require('https');
+const zlib = require('zlib');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -36,12 +39,18 @@ const rateBuckets = new Map();
 const SESSION_TTL_MS = 24 * 3600 * 1000;
 const ADMIN_TTL_MS = 2 * 3600 * 1000;
 const MAX_PROXY_BYTES = 5 * 1024 * 1024;
+const MAX_MAP_ENTRIES = 20000;
 
 let cachedGenAI = null;
+let cachedGenAIKey = '';
 async function getGenAIClient() {
   const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) return null;
-  if (!cachedGenAI) {
+  if (!apiKey) {
+    cachedGenAI = null;
+    cachedGenAIKey = '';
+    return null;
+  }
+  if (!cachedGenAI || cachedGenAIKey !== apiKey) {
     const { GoogleGenAI } = await import('@google/genai');
     cachedGenAI = new GoogleGenAI({
       apiKey,
@@ -51,6 +60,7 @@ async function getGenAIClient() {
         }
       }
     });
+    cachedGenAIKey = apiKey;
   }
   return cachedGenAI;
 }
@@ -59,7 +69,9 @@ function getMasterKey() {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   if (!fs.existsSync(MASTER_KEY_PATH)) {
     const k = crypto.randomBytes(24).toString('hex');
-    fs.writeFileSync(MASTER_KEY_PATH, k, { mode: 0o600 });
+    const tmp = MASTER_KEY_PATH + '.tmp-' + process.pid + '-' + crypto.randomBytes(4).toString('hex');
+    fs.writeFileSync(tmp, k, { mode: 0o600 });
+    fs.renameSync(tmp, MASTER_KEY_PATH);
     return k;
   }
   return fs.readFileSync(MASTER_KEY_PATH, 'utf8').trim();
@@ -107,38 +119,85 @@ function isSafeHttpUrl(raw) {
 }
 
 /* =====================================================================
-   PROTECAO ANTI-SSRF (BLOQUEIO DE REDE INTERNA, LOOPBACK E METADATA)
+   PROTECAO ANTI-SSRF (IPv4/IPv6 NORMALIZADO + PINNING ANTI-DNS-REBINDING)
    ===================================================================== */
+function parseIpv6Hextets(ip) {
+  const withoutZone = String(ip || '').split('%')[0].toLowerCase();
+  if (!net.isIPv6(withoutZone)) return null;
+  let working = withoutZone;
+  const lastColon = working.lastIndexOf(':');
+  if (lastColon !== -1 && working.slice(lastColon + 1).includes('.')) {
+    const ipv4Part = working.slice(lastColon + 1);
+    if (!net.isIPv4(ipv4Part)) return null;
+    const octets = ipv4Part.split('.').map(Number);
+    const h1 = ((octets[0] << 8) | octets[1]).toString(16);
+    const h2 = ((octets[2] << 8) | octets[3]).toString(16);
+    working = working.slice(0, lastColon + 1) + h1 + ':' + h2;
+  }
+  const halves = working.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - (left.length + right.length);
+  if (halves.length === 1 && left.length !== 8) return null;
+  if (halves.length === 2 && missing < 0) return null;
+  const full = halves.length === 2
+    ? [...left, ...Array(missing).fill('0'), ...right]
+    : left;
+  if (full.length !== 8) return null;
+  const nums = full.map(h => parseInt(h || '0', 16));
+  if (nums.some(n => Number.isNaN(n) || n < 0 || n > 0xffff)) return null;
+  return nums;
+}
+
 function isPrivateOrReservedIp(ip) {
   if (!ip) return true;
-  const clean = ip.replace(/^::ffff:/i, '');
+  const raw = String(ip).split('%')[0].trim();
+  const clean = raw.replace(/^::ffff:/i, '');
   if (net.isIPv4(clean)) {
     const parts = clean.split('.').map(Number);
     if (parts.length !== 4 || parts.some(n => Number.isNaN(n) || n < 0 || n > 255)) return true;
-    const [a, b] = parts;
+    const [a, b, c] = parts;
     if (a === 0) return true; // 0.0.0.0/8
     if (a === 10) return true; // 10.0.0.0/8
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64.0.0/10
     if (a === 127) return true; // Loopback 127.0.0.0/8
     if (a === 169 && b === 254) return true; // Link-local / Cloud Metadata 169.254.0.0/16
     if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-    if (a === 192 && b === 0 && parts[2] === 0) return true; // 192.0.0.0/24
-    if (a === 192 && b === 0 && parts[2] === 2) return true; // TEST-NET-1
+    if (a === 192 && b === 0 && (c === 0 || c === 2)) return true; // 192.0.0.0/24 & TEST-NET-1
+    if (a === 192 && b === 88 && c === 99) return true; // 6to4 relay anycast
     if (a === 192 && b === 168) return true; // 192.168.0.0/16
     if (a === 198 && (b === 18 || b === 19)) return true; // Benchmarking
+    if (a === 198 && b === 51 && c === 100) return true; // TEST-NET-2
+    if (a === 203 && b === 0 && c === 113) return true; // TEST-NET-3
     if (a >= 224) return true; // Multicast / Reserved
     return false;
   }
-  if (net.isIPv6(ip)) {
-    const low = ip.toLowerCase();
-    if (low === '::' || low === '::1') return true;
-    if (low.startsWith('fc') || low.startsWith('fd')) return true; // Unique local
-    if (low.startsWith('fe8') || low.startsWith('fe9') || low.startsWith('fea') || low.startsWith('feb')) return true; // Link-local
-    if (low.startsWith('ff')) return true; // Multicast
-    if (low.startsWith('::ffff:')) return isPrivateOrReservedIp(low.slice(7));
-    return false;
+  const h = parseIpv6Hextets(raw);
+  if (!h) return true;
+  // ::/128 (unspecified) e ::1/128 (loopback)
+  if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0 && h[6] === 0 && (h[7] === 0 || h[7] === 1)) {
+    return true;
   }
-  return true;
+  // ::ffff:0:0/96 (IPv4-mapped IPv6) e ::0:0/96 (IPv4-compatible IPv6)
+  if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && (h[5] === 0xffff || h[5] === 0)) {
+    const mappedIpv4 = `${h[6] >> 8}.${h[6] & 0xff}.${h[7] >> 8}.${h[7] & 0xff}`;
+    return isPrivateOrReservedIp(mappedIpv4);
+  }
+  // 64:ff9b::/96 e 64:ff9b:1::/48 (NAT64)
+  if (h[0] === 0x0064 && h[1] === 0xff9b) return true;
+  // 100::/64 (Discard-only)
+  if (h[0] === 0x0100 && h[1] === 0 && h[2] === 0 && h[3] === 0) return true;
+  // fc00::/7 (Unique Local), fe80::/10 (Link-Local), ff00::/8 (Multicast)
+  if ((h[0] & 0xfe00) === 0xfc00) return true;
+  if ((h[0] & 0xffc0) === 0xfe80) return true;
+  if ((h[0] & 0xff00) === 0xff00) return true;
+  // 2001::/32 (Teredo), 2001:2::/48 (Benchmarking), 2001:db8::/32 (Docs), 2002::/16 (6to4)
+  if (h[0] === 0x2001 && (h[1] === 0 || h[1] === 0x0002 || h[1] === 0x0db8)) return true;
+  if (h[0] === 0x2002) return true;
+  // Permite apenas Global Unicast 2000::/3 fora dos blocos reservados acima
+  if ((h[0] & 0xe000) !== 0x2000) return true;
+  return false;
 }
 
 async function validatePublicHttpUrl(rawUrl) {
@@ -158,7 +217,7 @@ async function validatePublicHttpUrl(rawUrl) {
   if (parsed.username || parsed.password) {
     return { ok: false, reason: 'Credenciais embutidas na URL não são permitidas.' };
   }
-  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   if (
     !host ||
     host === 'localhost' ||
@@ -174,7 +233,12 @@ async function validatePublicHttpUrl(rawUrl) {
     if (isPrivateOrReservedIp(host)) {
       return { ok: false, reason: 'Acesso a faixa de IP privada ou reservada bloqueado.' };
     }
-    return { ok: true, url: parsed.href };
+    return {
+      ok: true,
+      url: parsed.href,
+      pinnedAddress: host,
+      pinnedFamily: net.isIPv6(host) ? 6 : 4
+    };
   }
   try {
     const records = await dns.lookup(host, { all: true });
@@ -186,10 +250,127 @@ async function validatePublicHttpUrl(rawUrl) {
         return { ok: false, reason: 'O destino resolve para IP interno/privado bloqueado.' };
       }
     }
-    return { ok: true, url: parsed.href };
+    const preferred = records.find(r => r.family === 4) || records[0];
+    return {
+      ok: true,
+      url: parsed.href,
+      pinnedAddress: preferred.address,
+      pinnedFamily: preferred.family || (net.isIPv6(preferred.address) ? 6 : 4)
+    };
   } catch {
     return { ok: false, reason: 'Falha ao resolver domínio de destino.' };
   }
+}
+
+function makeHeaderAccessor(rawHeaders) {
+  const lower = Object.create(null);
+  for (const [k, v] of Object.entries(rawHeaders || {})) {
+    lower[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
+  }
+  return {
+    get(name) {
+      const val = lower[String(name || '').toLowerCase()];
+      return val === undefined ? null : val;
+    }
+  };
+}
+
+function pinnedHttpRequest(targetUrl, pinned, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(targetUrl);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const timeoutMs = Number(options.timeoutMs) || 15000;
+    const reqHeaders = { ...(options.headers || {}) };
+    if (!reqHeaders['Accept-Encoding'] && !reqHeaders['accept-encoding']) {
+      reqHeaders['Accept-Encoding'] = 'gzip, deflate, br';
+    }
+
+    let settled = false;
+    const fail = err => {
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    };
+
+    const req = mod.request(
+      parsed,
+      {
+        method: options.method || 'GET',
+        headers: reqHeaders,
+        timeout: timeoutMs,
+        lookup: (_hostname, opts, cb) => {
+          if (opts && opts.all) {
+            return cb(null, [{ address: pinned.pinnedAddress, family: pinned.pinnedFamily }]);
+          }
+          return cb(null, pinned.pinnedAddress, pinned.pinnedFamily);
+        }
+      },
+      res => {
+        const status = res.statusCode || 502;
+        const headers = makeHeaderAccessor(res.headers);
+        if (options.headOnly || (status >= 300 && status < 400)) {
+          res.resume();
+          if (!settled) {
+            settled = true;
+            resolve({ status, headers, bodyBuffer: Buffer.alloc(0) });
+          }
+          return;
+        }
+        const contentLength = Number(headers.get('content-length') || 0);
+        if (contentLength > MAX_PROXY_BYTES) {
+          res.destroy();
+          const err = new Error('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
+          err.statusCode = 413;
+          return fail(err);
+        }
+        const chunks = [];
+        let total = 0;
+        res.on('data', chunk => {
+          total += chunk.length;
+          if (total > MAX_PROXY_BYTES) {
+            res.destroy();
+            const err = new Error('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
+            err.statusCode = 413;
+            return fail(err);
+          }
+          chunks.push(chunk);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          let buf = Buffer.concat(chunks);
+          const enc = String(headers.get('content-encoding') || '').toLowerCase().trim();
+          try {
+            if (enc === 'gzip' || enc === 'x-gzip') {
+              buf = zlib.gunzipSync(buf, { maxOutputLength: MAX_PROXY_BYTES });
+            } else if (enc === 'deflate') {
+              buf = zlib.inflateSync(buf, { maxOutputLength: MAX_PROXY_BYTES });
+            } else if (enc === 'br') {
+              buf = zlib.brotliDecompressSync(buf, { maxOutputLength: MAX_PROXY_BYTES });
+            }
+          } catch {
+            const err = new Error('Falha ao decodificar ou tamanho excede o limite do Proxy XIQI.');
+            err.statusCode = 413;
+            return fail(err);
+          }
+          if (buf.length > MAX_PROXY_BYTES) {
+            const err = new Error('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
+            err.statusCode = 413;
+            return fail(err);
+          }
+          settled = true;
+          resolve({ status, headers, bodyBuffer: buf });
+        });
+        res.on('error', fail);
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Tempo limite excedido na conexão externa.'));
+    });
+    req.on('error', fail);
+    req.end();
+  });
 }
 
 async function safeExternalFetch(rawUrl, options = {}) {
@@ -202,10 +383,7 @@ async function safeExternalFetch(rawUrl, options = {}) {
       err.statusCode = 403;
       throw err;
     }
-    const resp = await fetch(check.url, {
-      ...options,
-      redirect: 'manual'
-    });
+    const resp = await pinnedHttpRequest(check.url, check, options);
     if (resp.status >= 300 && resp.status < 400) {
       const loc = resp.headers.get('location');
       if (!loc) return { resp, finalUrl: check.url };
@@ -222,29 +400,43 @@ async function safeExternalFetch(rawUrl, options = {}) {
 /* =====================================================================
    RATE LIMITING, BLOQUEIO CONTRA FORCA BRUTA E SANITIZACAO
    ===================================================================== */
-function pruneMapsIfNeeded() {
+function capMapSize(map, maxEntries) {
+  while (map.size > maxEntries) {
+    const firstKey = map.keys().next().value;
+    if (firstKey === undefined) break;
+    map.delete(firstKey);
+  }
+}
+
+function pruneMapsIfNeeded(force = false) {
   const now = Date.now();
-  if (activeUserTokens.size > 5000) {
+  if (force || activeUserTokens.size > 5000) {
     for (const [k, v] of activeUserTokens.entries()) {
       if (!v || now > v.exp) activeUserTokens.delete(k);
     }
+    capMapSize(activeUserTokens, MAX_MAP_ENTRIES);
   }
-  if (activeAdminTokens.size > 1000) {
+  if (force || activeAdminTokens.size > 1000) {
     for (const [k, exp] of activeAdminTokens.entries()) {
       if (!exp || now > exp) activeAdminTokens.delete(k);
     }
+    capMapSize(activeAdminTokens, 5000);
   }
-  if (loginFails.size > 5000) {
+  if (force || loginFails.size > 5000) {
     for (const [k, v] of loginFails.entries()) {
       if (!v || now > v.until) loginFails.delete(k);
     }
+    capMapSize(loginFails, MAX_MAP_ENTRIES);
   }
-  if (rateBuckets.size > 10000) {
+  if (force || rateBuckets.size > 10000) {
     for (const [k, v] of rateBuckets.entries()) {
       if (!v || now > v.resetAt) rateBuckets.delete(k);
     }
+    capMapSize(rateBuckets, MAX_MAP_ENTRIES);
   }
 }
+
+setInterval(() => pruneMapsIfNeeded(true), 5 * 60 * 1000).unref();
 
 function isBlocked(key) {
   const rec = loginFails.get(key);
@@ -307,16 +499,25 @@ app.use('/api', (req, res, next) => {
   if (secFetchSite === 'cross-site') {
     return res.status(403).json({ error: 'Requisição cross-site bloqueada por política CSRF.' });
   }
+  const expectedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
   const origin = req.headers.origin;
   if (origin) {
     try {
       const originHost = new URL(origin).host.toLowerCase();
-      const expectedHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
       if (!expectedHost || originHost !== expectedHost) {
         return res.status(403).json({ error: 'Origem não autorizada para esta operação.' });
       }
     } catch {
       return res.status(403).json({ error: 'Cabeçalho Origin inválido.' });
+    }
+  } else if (req.headers.referer) {
+    try {
+      const refHost = new URL(req.headers.referer).host.toLowerCase();
+      if (!expectedHost || refHost !== expectedHost) {
+        return res.status(403).json({ error: 'Referer não autorizado para esta operação.' });
+      }
+    } catch {
+      return res.status(403).json({ error: 'Cabeçalho Referer inválido.' });
     }
   }
   next();
@@ -343,7 +544,11 @@ app.use((req, res, next) => {
 
 function readJson(p, fb) {
   try {
-    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : fb;
+    if (!fs.existsSync(p)) return fb;
+    const raw = fs.readFileSync(p, 'utf8');
+    if (!raw || !raw.trim()) return fb;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : fb;
   } catch {
     return fb;
   }
@@ -351,7 +556,9 @@ function readJson(p, fb) {
 
 function writeJson(p, d) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(d, null, 2), { mode: 0o600 });
+  const tmp = p + '.tmp-' + process.pid + '-' + crypto.randomBytes(4).toString('hex');
+  fs.writeFileSync(tmp, JSON.stringify(d, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, p);
 }
 
 function hashSecret(p, s) {
@@ -425,17 +632,16 @@ function getAuthenticatedUserId(req) {
 
 function createDefaultGuestSession() {
   return {
-    searchEngine: 'google',
+    searchEngine: 'xiqi',
     aiMode: false,
     aiHistory: [],
     notes: '',
     activeTabId: 'tab-guest-home',
     tabs: [{ id: 'tab-guest-home', title: 'Nova Aba', type: 'newtab', url: '' }],
     shortcuts: [
-      { id: 'sc-g1', name: 'GitHub', url: 'https://github.com' },
-      { id: 'sc-g2', name: 'Google', url: 'https://www.google.com' },
-      { id: 'sc-g3', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
-      { id: 'sc-g4', name: 'Wikipédia', url: 'https://pt.wikipedia.org' }
+      { id: 'sc-g1', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
+      { id: 'sc-g2', name: 'Bing', url: 'https://www.bing.com' },
+      { id: 'sc-g3', name: 'Wikipédia', url: 'https://pt.wikipedia.org' }
     ]
   };
 }
@@ -447,7 +653,7 @@ function isAllowedInternalOrPublicUrl(url) {
 
 function sanitizeSessionPayload(rawSession) {
   const s = stripProtoPollution(rawSession || {});
-  const validEngines = new Set(['google', 'duckduckgo', 'bing']);
+  const validEngines = new Set(['xiqi', 'duckduckgo', 'bing']);
   const tabs = Array.isArray(s.tabs)
     ? s.tabs
         .filter(t => t && typeof t === 'object' && (t.type === 'newtab' || (t.type === 'web' && isAllowedInternalOrPublicUrl(t.url))))
@@ -493,7 +699,7 @@ function sanitizeSessionPayload(rawSession) {
     : [];
 
   return {
-    searchEngine: validEngines.has(s.searchEngine) ? s.searchEngine : 'google',
+    searchEngine: validEngines.has(s.searchEngine) ? s.searchEngine : 'xiqi',
     aiMode: Boolean(s.aiMode),
     aiHistory,
     notes: typeof s.notes === 'string' ? s.notes.slice(0, 15000) : '',
@@ -588,12 +794,12 @@ app.post('/api/store', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
 
 app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) => {
   const body = stripProtoPollution(req.body || {});
-  const name = String(body.name || '').trim().slice(0, 80);
-  const identifier = String(body.identifier || '').trim().slice(0, 120);
-  const pin = String(body.pin || '');
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+  const identifier = typeof body.identifier === 'string' ? body.identifier.trim().slice(0, 120) : '';
+  const pin = typeof body.pin === 'string' ? body.pin : '';
 
-  if (!name || !identifier || pin.length < 4 || pin.length > 128) {
-    return res.status(400).json({ error: 'Preencha Nome, E-mail/Usuário e Senha/PIN (mínimo 4 caracteres).' });
+  if (!name || !identifier || !pin.trim() || pin.length < 4 || pin.length > 128) {
+    return res.status(400).json({ error: 'Preencha Nome, E-mail/Usuário e Senha/PIN (4 a 128 caracteres).' });
   }
 
   const cur = readJson(PROFILES_PATH, {
@@ -628,17 +834,16 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
     color: palette[cur.users.length % palette.length],
     createdAt: new Date().toISOString(),
     session: {
-      searchEngine: 'google',
+      searchEngine: 'xiqi',
       aiMode: false,
       aiHistory: [],
       notes: '',
       activeTabId: initialTabId,
       tabs: [{ id: initialTabId, title: 'Nova Aba', type: 'newtab', url: '' }],
       shortcuts: [
-        { id: 'sc-' + Date.now() + '-1', name: 'GitHub', url: 'https://github.com' },
-        { id: 'sc-' + Date.now() + '-2', name: 'Google', url: 'https://www.google.com' },
-        { id: 'sc-' + Date.now() + '-3', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
-        { id: 'sc-' + Date.now() + '-4', name: 'Wikipédia', url: 'https://pt.wikipedia.org' }
+        { id: 'sc-' + Date.now() + '-1', name: 'DuckDuckGo', url: 'https://duckduckgo.com' },
+        { id: 'sc-' + Date.now() + '-2', name: 'Bing', url: 'https://www.bing.com' },
+        { id: 'sc-' + Date.now() + '-3', name: 'Wikipédia', url: 'https://pt.wikipedia.org' }
       ]
     }
   };
@@ -667,16 +872,11 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
     return res.status(429).json({ error: 'Muitas tentativas inválidas. Bloqueado por 10 minutos.' });
   }
   const body = stripProtoPollution(req.body || {});
-  const userIdParam = String(body.userId || '').trim();
-  const identifier = String(body.identifier || '').trim();
-  const pin = String(body.pin || '');
-  if ((!identifier && !userIdParam) || !pin) {
-    return res.status(400).json({ error: 'Informe identificador e senha/PIN.' });
-  }
-
-  const acctKey = 'acct:' + (userIdParam || identifier.toLowerCase());
-  if (isBlocked(acctKey)) {
-    return res.status(429).json({ error: 'Conta temporariamente bloqueada após múltiplas tentativas inválidas. Aguarde 10 minutos.' });
+  const userIdParam = typeof body.userId === 'string' ? body.userId.trim().slice(0, 80) : '';
+  const identifier = typeof body.identifier === 'string' ? body.identifier.trim().slice(0, 120) : '';
+  const pin = typeof body.pin === 'string' ? body.pin : '';
+  if ((!identifier && !userIdParam) || !pin || pin.length > 128) {
+    return res.status(400).json({ error: 'Informe identificador e senha/PIN válidos.' });
   }
 
   const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
@@ -684,6 +884,11 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
   const user = userIdParam
     ? users.find(u => u.id === userIdParam)
     : users.find(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase());
+
+  const acctKey = 'acct:' + (user ? user.id : (userIdParam || identifier.toLowerCase()));
+  if (isBlocked(acctKey)) {
+    return res.status(429).json({ error: 'Conta temporariamente bloqueada após múltiplas tentativas inválidas. Aguarde 10 minutos.' });
+  }
 
   if (!user || !verifyUserPin(user, pin)) {
     markFail(ipKey);
@@ -735,17 +940,12 @@ app.post('/api/auth/reset-password', rateLimit('auth_reset', 60 * 1000, 10), (re
     return res.status(429).json({ error: 'Muitas tentativas inválidas. Bloqueado por 10 minutos.' });
   }
   const body = stripProtoPollution(req.body || {});
-  const identifier = String(body.identifier || '').trim();
-  const recoveryCode = String(body.recoveryCode || '').trim();
-  const newPin = String(body.newPin || '');
+  const identifier = typeof body.identifier === 'string' ? body.identifier.trim().slice(0, 120) : '';
+  const recoveryCode = typeof body.recoveryCode === 'string' ? body.recoveryCode.trim().slice(0, 256) : '';
+  const newPin = typeof body.newPin === 'string' ? body.newPin : '';
 
-  if (!identifier || !recoveryCode || newPin.length < 4 || newPin.length > 128) {
-    return res.status(400).json({ error: 'Preencha usuário, código de recuperação/chave mestra e nova senha (mínimo 4 caracteres).' });
-  }
-
-  const acctKey = 'reset_acct:' + identifier.toLowerCase();
-  if (isBlocked(acctKey)) {
-    return res.status(429).json({ error: 'Muitas tentativas inválidas para esta conta. Aguarde 10 minutos.' });
+  if (!identifier || !recoveryCode || !newPin.trim() || newPin.length < 4 || newPin.length > 128) {
+    return res.status(400).json({ error: 'Preencha usuário, código de recuperação/chave mestra e nova senha (4 a 128 caracteres).' });
   }
 
   const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
@@ -754,6 +954,11 @@ app.post('/api/auth/reset-password', rateLimit('auth_reset', 60 * 1000, 10), (re
     String(u.identifier || '').toLowerCase() === identifier.toLowerCase() ||
     String(u.name || '').toLowerCase() === identifier.toLowerCase()
   );
+
+  const acctKey = 'reset_acct:' + (user ? user.id : identifier.toLowerCase());
+  if (isBlocked(acctKey)) {
+    return res.status(429).json({ error: 'Muitas tentativas inválidas para esta conta. Aguarde 10 minutos.' });
+  }
 
   const isMasterValid = safeEq(recoveryCode, getMasterKey());
   const isUserCodeValid = Boolean(
@@ -806,18 +1011,27 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 /* =====================================================================
-   ADMIN APIs COM BLOQUEIO ANTI-FORCA-BRUTA NA CHAVE MESTRA
+   ADMIN APIs COM BLOQUEIO ANTI-FORCA-BRUTA E RATE LIMIT
    ===================================================================== */
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', rateLimit('admin_login', 60 * 1000, 15), (req, res) => {
   const ip = 'admin:' + (req.ip || 'local');
   if (isBlocked(ip)) return res.status(429).json({ error: 'Bloqueado por 10 min após 5 falhas.' });
-  const { email, password } = stripProtoPollution(req.body || {});
-  const adm = getAdmins().find(a => String(a.email || '').toLowerCase() === String(email || '').trim().toLowerCase());
-  if (!adm || !safeEq(hashSecret(password || '', adm.salt), adm.hash)) {
+  const body = stripProtoPollution(req.body || {});
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase().slice(0, 120) : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!email || !password || password.length > 128) {
+    return res.status(400).json({ error: 'Informe e-mail e senha válidos.' });
+  }
+  const acctKey = 'admin_acct:' + email;
+  if (isBlocked(acctKey)) return res.status(429).json({ error: 'Conta administrativa temporariamente bloqueada.' });
+  const adm = getAdmins().find(a => String(a.email || '').toLowerCase() === email);
+  if (!adm || !safeEq(hashSecret(password, adm.salt), adm.hash)) {
     markFail(ip);
+    markFail(acctKey);
     return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
   }
   loginFails.delete(ip);
+  loginFails.delete(acctKey);
   const tk = crypto.randomBytes(32).toString('hex');
   activeAdminTokens.set(tk, Date.now() + ADMIN_TTL_MS);
   res.json({ ok: true, token: tk });
@@ -829,18 +1043,21 @@ app.post('/api/admin/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/register', (req, res) => {
+app.post('/api/admin/register', rateLimit('admin_mkey', 60 * 1000, 10), (req, res) => {
   const ip = 'mkey:' + (req.ip || 'local');
   if (isBlocked(ip)) return res.status(429).json({ error: 'Bloqueado por 10 min após 5 falhas.' });
-  const { name, email, password, masterKey } = stripProtoPollution(req.body || {});
+  const body = stripProtoPollution(req.body || {});
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+  const em = typeof body.email === 'string' ? body.email.trim().toLowerCase().slice(0, 120) : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const masterKey = typeof body.masterKey === 'string' ? body.masterKey.slice(0, 256) : '';
   if (!safeEq(masterKey, getMasterKey())) {
     markFail(ip);
     return res.status(403).json({ error: 'Chave mestra inválida.' });
   }
   loginFails.delete(ip);
-  const em = String(email || '').trim().toLowerCase();
-  if (!name || !em.includes('@') || !password || String(password).length < 4) {
-    return res.status(400).json({ error: 'Preencha Nome, E-mail e Senha (min. 4).' });
+  if (!name || !em.includes('@') || !password.trim() || password.length < 4 || password.length > 128) {
+    return res.status(400).json({ error: 'Preencha Nome, E-mail e Senha (4 a 128 caracteres).' });
   }
   const list = getAdmins();
   if (list.some(a => String(a.email || '').toLowerCase() === em)) {
@@ -848,9 +1065,9 @@ app.post('/api/admin/register', (req, res) => {
   }
   const salt = crypto.randomBytes(16).toString('hex');
   list.push({
-    id: 'adm-' + Date.now(),
-    name: String(name).trim().slice(0, 80),
-    email: em.slice(0, 120),
+    id: 'adm-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex'),
+    name,
+    email: em,
     salt,
     hash: hashSecret(password, salt),
     createdAt: new Date().toISOString()
@@ -859,25 +1076,28 @@ app.post('/api/admin/register', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/reset-password', (req, res) => {
+app.post('/api/admin/reset-password', rateLimit('admin_mkey', 60 * 1000, 10), (req, res) => {
   const ip = 'mkey:' + (req.ip || 'local');
   if (isBlocked(ip)) return res.status(429).json({ error: 'Bloqueado por 10 min após 5 falhas.' });
-  const { email, masterKey, newPassword } = stripProtoPollution(req.body || {});
+  const body = stripProtoPollution(req.body || {});
+  const em = typeof body.email === 'string' ? body.email.trim().toLowerCase().slice(0, 120) : '';
+  const masterKey = typeof body.masterKey === 'string' ? body.masterKey.slice(0, 256) : '';
+  const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
   if (!safeEq(masterKey, getMasterKey())) {
     markFail(ip);
     return res.status(403).json({ error: 'Chave mestra inválida.' });
   }
   loginFails.delete(ip);
-  const em = String(email || '').trim().toLowerCase();
   const list = getAdmins();
   const adm = list.find(a => String(a.email || '').toLowerCase() === em);
-  if (!adm || !newPassword || String(newPassword).length < 4) {
+  if (!adm || !newPassword.trim() || newPassword.length < 4 || newPassword.length > 128) {
     return res.status(400).json({ error: 'Dados inválidos.' });
   }
   const salt = crypto.randomBytes(16).toString('hex');
   adm.salt = salt;
   adm.hash = hashSecret(newPassword, salt);
   writeJson(ADMINS_PATH, list);
+  activeAdminTokens.clear();
   res.json({ ok: true });
 });
 
@@ -901,7 +1121,8 @@ app.delete('/api/admin/users/:id', rateLimit('admin_api', 60 * 1000, 30), (req, 
     return res.status(403).json({ error: 'Negado.' });
   }
   loginFails.delete(ip);
-  const targetId = String(req.params.id || '');
+  const targetId = String(req.params.id || '').trim().slice(0, 80);
+  if (!targetId) return res.status(400).json({ error: 'ID inválido.' });
   const d = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
   d.users = (d.users || []).filter(u => u.id !== targetId);
   for (const [tok, rec] of activeUserTokens.entries()) {
@@ -912,10 +1133,10 @@ app.delete('/api/admin/users/:id', rateLimit('admin_api', 60 * 1000, 30), (req, 
 });
 
 /* =====================================================================
-   BUSCA WEB RESILIENTE (GOOGLE / DUCKDUCKGO / BING + FALLBACK GEMINI)
+   BUSCA WEB RESILIENTE (XIQI BUSCA / DUCKDUCKGO / BING + FALLBACK IA)
    ===================================================================== */
 const SEARCH_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'User-Agent': 'XIQI-OS/1.0 (XIQI Core x86_64; Corporacao Engecema)',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
 };
@@ -1025,17 +1246,39 @@ async function searchWikipediaPt(query) {
   }
 }
 
+async function withTimeout(promise, ms, label = 'Timeout') {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const err = new Error(label);
+          err.status = 504;
+          reject(err);
+        }, ms);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function searchWithGeminiGrounding(query) {
   try {
     const ai = await getGenAIClient();
     if (!ai) return [];
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: 'Liste os principais links oficiais e páginas web relevantes em português para a pesquisa: ' + query,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
-    });
+    const response = await withTimeout(
+      ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: 'Liste os principais links oficiais e páginas web relevantes em português para a pesquisa: ' + query,
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
+      }),
+      12000,
+      'Tempo limite na busca IA.'
+    );
     const chunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const seen = new Set();
     const items = [];
@@ -1055,13 +1298,13 @@ async function searchWithGeminiGrounding(query) {
 
 app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 300);
-  const engineParam = String(req.query.engine || 'google').toLowerCase();
+  const engineParam = String(req.query.engine || 'xiqi').toLowerCase();
   const engineMap = {
-    google: { label: 'Google', extUrl: 'https://www.google.com/search?q=' + encodeURIComponent(q) },
+    xiqi: { label: 'Pesquisa XIQI', extUrl: 'https://duckduckgo.com/?q=' + encodeURIComponent(q) },
     duckduckgo: { label: 'DuckDuckGo', extUrl: 'https://duckduckgo.com/?q=' + encodeURIComponent(q) },
     bing: { label: 'Bing', extUrl: 'https://www.bing.com/search?q=' + encodeURIComponent(q) }
   };
-  const eng = engineMap[engineParam] || engineMap.google;
+  const eng = engineMap[engineParam] || engineMap.xiqi;
 
   if (!q) return res.status(400).type('text/plain').send('Digite um termo para pesquisar.');
 
@@ -1178,7 +1421,7 @@ function headersBlockIframe(headers) {
 }
 
 app.get('/api/check-embed', rateLimit('embed', 60 * 1000, 60), async (req, res) => {
-  const rawUrl = String(req.query.url || '').trim();
+  const rawUrl = String(req.query.url || '').trim().slice(0, 2000);
   const check = await validatePublicHttpUrl(rawUrl);
   if (!check.ok) {
     return res.status(403).json({ embeddable: false, reason: check.reason, finalUrl: rawUrl });
@@ -1186,14 +1429,16 @@ app.get('/api/check-embed', rateLimit('embed', 60 * 1000, 60), async (req, res) 
   try {
     let { resp, finalUrl } = await safeExternalFetch(check.url, {
       method: 'HEAD',
+      headOnly: true,
       headers: SEARCH_HEADERS,
-      signal: AbortSignal.timeout(6000)
+      timeoutMs: 6000
     });
     if (resp.status === 405 || resp.status === 501) {
       const retry = await safeExternalFetch(check.url, {
         method: 'GET',
+        headOnly: true,
         headers: SEARCH_HEADERS,
-        signal: AbortSignal.timeout(6000)
+        timeoutMs: 6000
       });
       resp = retry.resp;
       finalUrl = retry.finalUrl;
@@ -1214,7 +1459,7 @@ app.get('/api/check-embed', rateLimit('embed', 60 * 1000, 60), async (req, res) 
 });
 
 app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
-  const rawUrl = String(req.query.url || '').trim();
+  const rawUrl = String(req.query.url || '').trim().slice(0, 2000);
   const check = await validatePublicHttpUrl(rawUrl);
   if (!check.ok) {
     return res.status(403).type('text/plain').send(check.reason);
@@ -1223,45 +1468,20 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
     const { resp: upstream, finalUrl } = await safeExternalFetch(check.url, {
       method: 'GET',
       headers: SEARCH_HEADERS,
-      signal: AbortSignal.timeout(15000)
+      timeoutMs: 15000
     });
-    const contentLength = Number(upstream.headers.get('content-length') || 0);
-    if (contentLength > MAX_PROXY_BYTES) {
-      return res.status(413).type('text/plain').send('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
-    }
+    const safeStatus = (upstream.status >= 200 && upstream.status <= 599) ? upstream.status : 502;
+    const rawContentType = String(upstream.headers.get('content-type') || 'application/octet-stream').replace(/[\r\n]/g, '');
+    const mimeOnly = rawContentType.split(';')[0].trim().toLowerCase();
+    const rawBuf = upstream.bodyBuffer || Buffer.alloc(0);
 
-    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-    const chunks = [];
-    let totalBytes = 0;
-    if (upstream.body && typeof upstream.body.getReader === 'function') {
-      const reader = upstream.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          totalBytes += value.byteLength;
-          if (totalBytes > MAX_PROXY_BYTES) {
-            try { await reader.cancel(); } catch {}
-            return res.status(413).type('text/plain').send('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
-          }
-          chunks.push(Buffer.from(value));
-        }
-      }
-    } else {
-      const buf = Buffer.from(await upstream.arrayBuffer());
-      if (buf.length > MAX_PROXY_BYTES) {
-        return res.status(413).type('text/plain').send('Conteúdo excede o limite máximo permitido pelo Proxy XIQI.');
-      }
-      chunks.push(buf);
-    }
-    const rawBuf = Buffer.concat(chunks);
-
-    if (contentType.toLowerCase().includes('text/html')) {
+    if (mimeOnly === 'text/html' || mimeOnly === 'application/xhtml+xml') {
       let html = rawBuf.toString('utf8');
       html = html.replace(
         /<meta[^>]+http-equiv=["']?(?:Content-Security-Policy|X-Frame-Options)["']?[^>]*>/gi,
         ''
       );
+      html = html.replace(/<base\b[^>]*>/gi, '');
 
       const parsedFinal = new URL(finalUrl);
       const baseTag = `<base href="${escHtml(parsedFinal.href)}">`;
@@ -1312,37 +1532,40 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
       } else {
         html = baseTag + html;
       }
-      if (/<\/body>/i.test(html)) {
-        html = html.replace(/<\/body>/i, `${bridgeScript}</body>`);
+      const lastBodyIdx = html.toLowerCase().lastIndexOf('</body>');
+      if (lastBodyIdx !== -1) {
+        html = html.slice(0, lastBodyIdx) + bridgeScript + html.slice(lastBodyIdx);
       } else {
         html += bridgeScript;
       }
 
-      res.status(upstream.status).type('text/html; charset=utf-8').send(html);
+      res.status(safeStatus).type('text/html; charset=utf-8').send(html);
       return;
     }
 
-    res.status(upstream.status).setHeader('Content-Type', contentType).send(rawBuf);
+    res.status(safeStatus).setHeader('Content-Type', rawContentType || 'application/octet-stream').send(rawBuf);
   } catch (err) {
-    const status = err && err.statusCode === 403 ? 403 : 502;
+    if (res.headersSent) return;
+    const status = err && err.statusCode === 403 ? 403 : (err && err.statusCode === 413 ? 413 : 502);
+    const safeExternalHref = isSafeHttpUrl(rawUrl) ? escHtml(rawUrl) : '#';
     res.status(status).type('text/html; charset=utf-8').send(`<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"><title>Acesso indisponível</title></head>
 <body style="font-family:sans-serif;padding:32px;background:#f8fafc;color:#0f172a;text-align:center">
   <h2>Não foi possível carregar este endereço pelo Proxy XIQI</h2>
-  <p style="color:#475569">${escHtml(err && err.statusCode === 403 ? err.message : rawUrl)}</p>
-  <a href="${escHtml(rawUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:12px;padding:10px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Abrir em nova janela ↗</a>
+  <p style="color:#475569">${escHtml(err && (err.statusCode === 403 || err.statusCode === 413) ? err.message : rawUrl)}</p>
+  ${safeExternalHref !== '#' ? `<a href="${safeExternalHref}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:12px;padding:10px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Abrir em nova janela ↗</a>` : ''}
 </body></html>`);
   }
 });
 
 /* =====================================================================
-   MODO IA (GEMINI API SERVER-SIDE COM GOOGLE SEARCH GROUNDING)
+   MODO IA (API SERVER-SIDE COM GROUNDING DE PESQUISA)
    ===================================================================== */
 async function callGeminiWithRetry(ai, params, maxRetries = 1) {
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await ai.models.generateContent(params);
+      return await withTimeout(ai.models.generateContent(params), 25000, 'Tempo limite excedido ao consultar a XIQI IA.');
     } catch (err) {
       lastErr = err;
       const msg = String(err?.message || '');
@@ -1358,7 +1581,7 @@ async function callGeminiWithRetry(ai, params, maxRetries = 1) {
 app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
   try {
     const body = stripProtoPollution(req.body || {});
-    const prompt = String(body.prompt || '').trim();
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 8000) : '';
     const rawHistory = Array.isArray(body.history) ? body.history : [];
     if (!prompt) return res.status(400).json({ error: 'Digite uma pergunta.' });
 
@@ -1379,7 +1602,7 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
 
     contents.push({
       role: 'user',
-      parts: [{ text: prompt.slice(0, 8000) }]
+      parts: [{ text: prompt }]
     });
 
     const response = await callGeminiWithRetry(ai, {
@@ -1438,7 +1661,7 @@ app.get('/api/system', (req, res) => {
   const uptimeMin = Math.floor(os.uptime() / 60);
   const info = {
     os: 'XIQI OS v1.0',
-    kernel: 'XIQI Core ' + os.arch(),
+    kernel: 'XIQI Core x86_64',
     edition: 'Data Center Independente — Corporação Engecema',
     freeMemMb: freeMb,
     totalMemMb: totalMb,
@@ -1452,18 +1675,20 @@ app.get('/api/system', (req, res) => {
   res.json(info);
 });
 
-app.post('/api/terminal', (req, res) => {
+app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), (req, res) => {
   const ip = 'mkey:' + (req.ip || 'local');
   if (isBlocked(ip)) {
     return res.status(429).json({ output: 'Bloqueado por 10 min após 5 tentativas inválidas.' });
   }
-  const { cmd, masterKey } = stripProtoPollution(req.body || {});
+  const body = stripProtoPollution(req.body || {});
+  const cmd = typeof body.cmd === 'string' ? body.cmd.slice(0, 200) : '';
+  const masterKey = typeof body.masterKey === 'string' ? body.masterKey.slice(0, 256) : '';
   if (!safeEq(masterKey, getMasterKey())) {
     markFail(ip);
     return res.status(403).json({ output: 'Acesso negado: Chave Mestra inválida.' });
   }
   loginFails.delete(ip);
-  const raw = String(cmd || '').trim();
+  const raw = cmd.trim();
   const low = raw.toLowerCase();
 
   if (!raw || low === 'help') {
@@ -1486,7 +1711,7 @@ app.post('/api/terminal', (req, res) => {
     return res.json({ output: `XIQI OS RAM: ${totalMb - freeMb} MB em uso / ${freeMb} MB livres (${totalMb} MB total)` });
   }
   if (low.startsWith('uname')) {
-    return res.json({ output: `XIQI OS 1.0.0 ${os.hostname()} XIQI-Core-${os.arch()} Corporacao-Engecema` });
+    return res.json({ output: `XIQI OS v1.0 ${os.hostname()} XIQI Core x86_64 Corporacao-Engecema` });
   }
   if (low === 'hostname') {
     return res.json({ output: os.hostname() });
@@ -1526,7 +1751,11 @@ app.get('/api/notes', (req, res) => {
 
 app.post('/api/notes', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
   const authUserId = getAuthenticatedUserId(req);
-  const text = String((req.body && req.body.text) || '').slice(0, 15000);
+  const body = stripProtoPollution(req.body || {});
+  if (typeof body.text !== 'string') {
+    return res.status(400).json({ error: 'Formato inválido de anotação.' });
+  }
+  const text = body.text.slice(0, 15000);
   const cur = readJson(PROFILES_PATH, {
     version: '1.0.0',
     organization: 'Corporação Engecema',
@@ -1553,4 +1782,42 @@ app.get('/index.html', (req, res) => res.sendFile(INDEX_PATH));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found', output: 'Endpoint não encontrado.' }));
 app.use((req, res) => res.status(404).type('text/plain').send('Not Found'));
 
-app.listen(PORT, HOST, () => console.log('XIQI OS Server listening on port ' + PORT));
+app.use((err, req, res, _next) => {
+  if (res.headersSent) return;
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON inválido na requisição.' });
+  }
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload excede o limite permitido.' });
+  }
+  console.error('[XIQI OS Error]', err && err.message ? err.message : err);
+  if (req.path && req.path.startsWith('/api')) {
+    return res.status(500).json({ error: 'Erro interno no servidor XIQI OS.' });
+  }
+  res.status(500).type('text/plain').send('Erro interno no servidor XIQI OS.');
+});
+
+process.on('unhandledRejection', reason => {
+  console.error('[XIQI OS UnhandledRejection]', reason && reason.message ? reason.message : reason);
+});
+
+process.on('uncaughtException', err => {
+  console.error('[XIQI OS UncaughtException]', err && err.message ? err.message : err);
+});
+
+const server = app.listen(PORT, HOST, () => console.log('XIQI OS Server listening on port ' + PORT));
+server.requestTimeout = 30000;
+server.headersTimeout = 15000;
+server.keepAliveTimeout = 5000;
+server.on('error', err => {
+  console.error('[XIQI OS Server Error]', err && err.message ? err.message : err);
+  process.exitCode = 1;
+});
+
+function gracefulShutdown(signal) {
+  console.log('XIQI OS Server shutting down (' + signal + ')...');
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
