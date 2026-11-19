@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light only">
   <title>XIQI OS</title>
   <meta name="description" content="Sistema Operacional corporativo ultraleve XIQI OS - Corporação Engecema">
   <meta property="og:title" content="XIQI OS">
   <meta property="og:description" content="Sistema Operacional corporativo ultraleve XIQI OS - Corporação Engecema">
   <style>
     :root {
+      color-scheme: light only;
       --bg-page: #ffffff;
       --bg-soft: #f8fafc;
       --bg-hover: #f1f5f9;
@@ -34,6 +36,9 @@
 
     html {
       height: 100%;
+      overflow-x: hidden;
+      background-color: #ffffff;
+      color: #0f172a;
     }
 
     html, body {
@@ -58,6 +63,7 @@
       display: flex;
       -webkit-flex-direction: column;
       flex-direction: column;
+      overflow-x: auto;
     }
 
     .hidden {
@@ -736,26 +742,32 @@
       max-width: 1120px;
       width: 100%;
       margin: 0 auto;
+      overflow-x: auto;
+      overflow-y: visible;
     }
 
     .mini-tab-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       gap: 12px;
       padding: 8px 12px;
       background-color: var(--bg-soft);
       border: 1px solid var(--border-light);
       border-bottom: none;
       border-radius: 10px 10px 0 0;
+      overflow: visible;
     }
 
     .mini-tabs-list {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 6px;
-      overflow-x: auto;
+      overflow: visible;
       min-width: 0;
+      flex: 1 1 auto;
     }
 
     .mini-tab {
@@ -987,6 +999,63 @@
       min-height: 38px;
     }
 
+    .password-field-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-field-wrap .form-input {
+      padding-right: 40px;
+    }
+
+    .password-eye-btn {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      padding: 5px 6px;
+      cursor: pointer;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .password-eye-btn:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-main);
+    }
+
+    .settings-section {
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      background-color: #ffffff;
+    }
+
+    .settings-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin: 0 0 8px;
+    }
+
+    .settings-sys-box {
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--text-muted);
+      white-space: pre-line;
+      background-color: var(--bg-soft);
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+
     .form-error {
       font-size: 12px;
       color: var(--danger);
@@ -1168,6 +1237,13 @@
       <button type="button" class="header-sys-btn" id="sysUpdateBtn" title="Atualizar XIQI OS via repositório oficial">↻ Atualizar Sistema</button>
       <button type="button" class="header-sys-btn" id="sysRebootBtn" title="Reiniciar o computador">⟳ Reiniciar PC</button>
       <button type="button" class="header-sys-btn header-sys-btn-danger" id="sysShutdownBtn" title="Desligar o computador">⏻ Desligar PC</button>
+      <button type="button" class="header-sys-btn" id="openSettingsBtn" title="Configurações do sistema" style="display:inline-flex;align-items:center;gap:5px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.84 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        Configurações
+      </button>
     </nav>
 
     <div class="auth-header-controls" id="authHeaderWrap">
@@ -1202,7 +1278,10 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="loginPin">Senha ou PIN</label>
-              <input class="form-input" id="loginPin" type="password" required>
+              <div class="password-field-wrap">
+                <input class="form-input" id="loginPin" type="password" required>
+                <button type="button" class="password-eye-btn" data-eye-target="loginPin" aria-label="Mostrar ou ocultar senha" aria-pressed="false" title="Mostrar ou ocultar senha"></button>
+              </div>
             </div>
             <div class="form-error" id="loginError"></div>
             <button type="submit" class="btn-primary btn-full">Entrar</button>
@@ -1224,7 +1303,10 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="regPin">Senha ou PIN de acesso</label>
-              <input class="form-input" id="regPin" type="password" required minlength="4">
+              <div class="password-field-wrap">
+                <input class="form-input" id="regPin" type="password" required minlength="4">
+                <button type="button" class="password-eye-btn" data-eye-target="regPin" aria-label="Mostrar ou ocultar senha" aria-pressed="false" title="Mostrar ou ocultar senha"></button>
+              </div>
             </div>
             <div class="form-error" id="registerError"></div>
             <button type="submit" class="btn-primary btn-full">Cadastrar e Entrar</button>
@@ -1239,11 +1321,17 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="resetRecoveryCode">Código de Recuperação ou Chave Mestra</label>
-              <input class="form-input" id="resetRecoveryCode" type="password" required>
+              <div class="password-field-wrap">
+                <input class="form-input" id="resetRecoveryCode" type="password" required>
+                <button type="button" class="password-eye-btn" data-eye-target="resetRecoveryCode" aria-label="Mostrar ou ocultar código de recuperação" aria-pressed="false" title="Mostrar ou ocultar código"></button>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label" for="resetNewPin">Nova Senha ou PIN</label>
-              <input class="form-input" id="resetNewPin" type="password" required minlength="4">
+              <div class="password-field-wrap">
+                <input class="form-input" id="resetNewPin" type="password" required minlength="4">
+                <button type="button" class="password-eye-btn" data-eye-target="resetNewPin" aria-label="Mostrar ou ocultar nova senha" aria-pressed="false" title="Mostrar ou ocultar senha"></button>
+              </div>
             </div>
             <div class="form-error" id="resetError"></div>
             <div class="form-success" id="resetSuccess"></div>
@@ -1283,6 +1371,7 @@
           type="text"
           id="searchInput"
           class="search-input"
+          placeholder="Pesquisar na web, digitar URL ou perguntar à XIQI IA..."
           aria-label="Campo de pesquisa, endereço URL ou pergunta no Modo IA"
           autocomplete="off"
         >
@@ -1325,7 +1414,7 @@
           <button type="button" class="btn-sm" id="webReloadBtn" title="Recarregar">↻</button>
         </div>
         <form id="tabAddressForm" class="web-address-form" autocomplete="off">
-          <input type="text" id="tabUrlInput" class="web-url-input" aria-label="Barra de endereço">
+          <input type="text" id="tabUrlInput" class="web-url-input" placeholder="Digite um endereço URL ou pesquise..." aria-label="Barra de endereço">
           <button type="submit" class="btn-sm btn-sm-accent">Ir</button>
         </form>
         <div class="web-toolbar-actions">
@@ -1350,6 +1439,54 @@
     <span class="footer-corp-text">Corporação Engecema</span>
     <button type="button" class="btn-sair-discreet" id="exitSessionBtn">SAIR</button>
   </footer>
+
+  <!-- Modal: Configuracoes do Sistema -->
+  <div class="modal-backdrop hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal-card" style="background-color:#ffffff;color:#0f172a;max-width:480px;">
+      <h2 class="modal-title" id="settingsModalTitle">Configurações — XIQI OS</h2>
+      <p class="modal-sub">Preferências visuais, pesquisa, sessão e informações do sistema.</p>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Aparência e Tema</div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="settingsThemeSelect">Tema da Interface</label>
+          <select class="form-input" id="settingsThemeSelect">
+            <option value="light">Tema Claro (Fundo Branco #ffffff — Padrão)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Pesquisa Web</div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="settingsEngineSelect">Mecanismo de busca padrão</label>
+          <select class="form-input notranslate" translate="no" id="settingsEngineSelect">
+            <option value="xiqi">Pesquisa XIQI</option>
+            <option value="duckduckgo">DuckDuckGo</option>
+            <option value="bing">Bing</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Cache e Sessão</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <button type="button" class="btn-secondary" id="settingsClearCacheBtn">Limpar Cache e Abas</button>
+          <a href="/admin" class="btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;">Administração</a>
+        </div>
+        <div class="form-success" id="settingsStatusMsg" style="margin:6px 0 0;min-height:16px;"></div>
+      </div>
+
+      <div class="settings-section" style="margin-bottom:0">
+        <div class="settings-section-title">Detalhes do Sistema</div>
+        <div class="settings-sys-box" id="settingsSystemDetails">Carregando informações do XIQI OS...</div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-primary" id="closeSettingsModalBtn">Fechar</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal: Acesso Rapido -->
   <div class="modal-backdrop hidden" id="quickAccessModal" role="dialog" aria-modal="true" aria-labelledby="quickAccessTitle">
@@ -1515,11 +1652,37 @@
         return session;
       }
 
+      var USER_TOKEN_KEY = 'xiqi_user_token';
+      var authToken = '';
+      try {
+        authToken = sessionStorage.getItem(USER_TOKEN_KEY) || '';
+      } catch (err) {}
+
+      function setAuthToken(tok) {
+        authToken = typeof tok === 'string' ? tok.trim() : '';
+        try {
+          if (authToken) sessionStorage.setItem(USER_TOKEN_KEY, authToken);
+          else sessionStorage.removeItem(USER_TOKEN_KEY);
+        } catch (err) {}
+      }
+
+      function buildApiHeaders(extra) {
+        var headers = Object.assign({}, extra || {});
+        if (authToken) headers['x-user-token'] = authToken;
+        return headers;
+      }
+
+      function isLocalHomeUrl(url) {
+        var s = String(url || '').trim();
+        if (!s) return true;
+        return /^https?:\/\/(?:127\.0\.0\.1|127\.0\.0|localhost|xiqios(?:\.local)?)(?::(?:3000|80|443))?(?:\/(?:index\.html)?(?:\?)?)?$/i.test(s);
+      }
+
       function saveStore(nextStore) {
         try {
           fetch('/api/store', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ session: nextStore.session })
           }).catch(function () {});
         } catch (err) {
@@ -1528,7 +1691,7 @@
       }
 
       var store = createDefaultWorkspace();
-      fetch('/api/store')
+      fetch('/api/store', { headers: buildApiHeaders() })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && Array.isArray(d.users)) {
@@ -1537,6 +1700,7 @@
               return u;
             });
             store.activeUser = d.activeUser || null;
+            if (!store.activeUser) setAuthToken('');
             if (d.session) {
               store.session = sanitizeSession(d.session);
             }
@@ -1549,6 +1713,7 @@
       var aiLastError = '';
       var aiHistoryViewOpen = false;
       var selectedLoginUserId = '';
+      var selectedLoginUserName = '';
 
       function getCurrentUser() {
         return store.activeUser || null;
@@ -1671,6 +1836,7 @@
 
           chip.addEventListener('click', function () {
             selectedLoginUserId = u.id;
+            selectedLoginUserName = u.name || '';
             document.getElementById('loginIdentifier').value = u.name;
             document.getElementById('loginPin').value = '';
             document.getElementById('loginError').textContent = '';
@@ -1685,8 +1851,33 @@
       }
 
       document.getElementById('loginIdentifier').addEventListener('input', function () {
-        selectedLoginUserId = '';
+        if (this.value.trim() !== selectedLoginUserName.trim()) {
+          selectedLoginUserId = '';
+          selectedLoginUserName = '';
+        }
       });
+
+      var EYE_OPEN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      var EYE_CLOSED_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+      function bindPasswordEyeButton(btn) {
+        if (!btn) return;
+        btn.innerHTML = EYE_OPEN_SVG;
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var targetId = btn.getAttribute('data-eye-target');
+          var input = targetId ? document.getElementById(targetId) : null;
+          if (!input) return;
+          var shouldShow = input.type === 'password';
+          input.type = shouldShow ? 'text' : 'password';
+          btn.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+          btn.innerHTML = shouldShow ? EYE_CLOSED_SVG : EYE_OPEN_SVG;
+          input.focus();
+        });
+      }
+
+      document.querySelectorAll('.password-eye-btn').forEach(bindPasswordEyeButton);
 
       document.getElementById('openLoginTabBtn').addEventListener('click', function (e) {
         e.stopPropagation();
@@ -1727,7 +1918,7 @@
         }
       });
 
-      /* Submit: Fazer Login autenticado no servidor (scrypt + cookie HttpOnly) */
+      /* Submit: Fazer Login autenticado no servidor (scrypt + cookie HttpOnly + token) */
       document.getElementById('loginForm').addEventListener('submit', async function (e) {
         e.preventDefault();
         var errEl = document.getElementById('loginError');
@@ -1735,6 +1926,14 @@
 
         var identifier = document.getElementById('loginIdentifier').value.trim();
         var pin = document.getElementById('loginPin').value;
+        if (!identifier && !selectedLoginUserId) {
+          errEl.textContent = 'Informe seu E-mail ou Usuário Corporativo.';
+          return;
+        }
+        if (!pin) {
+          errEl.textContent = 'Informe sua Senha ou PIN de acesso.';
+          return;
+        }
 
         try {
           var resp = await fetch('/api/auth/login', {
@@ -1751,10 +1950,12 @@
             errEl.textContent = (data && data.error) ? String(data.error) : 'Credenciais inválidas.';
             return;
           }
+          if (data.token) setAuthToken(data.token);
           store.activeUser = data.activeUser || null;
           store.users = Array.isArray(data.users) ? data.users : store.users;
           store.session = sanitizeSession(data.session);
           selectedLoginUserId = '';
+          selectedLoginUserName = '';
           document.getElementById('loginForm').reset();
           closeAuthPopover();
           renderAll();
@@ -1772,8 +1973,16 @@
         var errEl = document.getElementById('registerError');
         errEl.textContent = '';
 
-        if (!fullName || !identifier || pin.length < 4) {
-          errEl.textContent = 'Preencha Nome, E-mail/Usuário e Senha/PIN (mínimo 4 caracteres).';
+        if (fullName.length < 2) {
+          errEl.textContent = 'Informe seu Nome Completo (mínimo 2 caracteres).';
+          return;
+        }
+        if (identifier.length < 2) {
+          errEl.textContent = 'Informe um E-mail ou Usuário Corporativo válido.';
+          return;
+        }
+        if (!pin.trim() || pin.length < 4) {
+          errEl.textContent = 'A Senha ou PIN deve ter no mínimo 4 caracteres válidos.';
           return;
         }
 
@@ -1788,6 +1997,7 @@
             errEl.textContent = (data && data.error) ? String(data.error) : 'Erro ao cadastrar usuário.';
             return;
           }
+          if (data.token) setAuthToken(data.token);
           store.activeUser = data.activeUser || null;
           store.users = Array.isArray(data.users) ? data.users : store.users;
           store.session = sanitizeSession(data.session);
@@ -2303,8 +2513,30 @@
         return tab.url;
       }
 
+      function closeBlockedTabAndFallback(session, blockedTab) {
+        if (session.tabs.length <= 1) {
+          var homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+          session.tabs = [homeTab];
+          session.activeTabId = homeTab.id;
+        } else {
+          var idx = session.tabs.findIndex(function (t) { return t.id === blockedTab.id; });
+          session.tabs = session.tabs.filter(function (t) { return t.id !== blockedTab.id; });
+          if (session.activeTabId === blockedTab.id) {
+            session.activeTabId = session.tabs[Math.max(0, idx - 1)].id;
+          }
+        }
+        var iframe = document.getElementById('webIframe');
+        if (iframe) {
+          iframe.src = 'about:blank';
+          iframe.removeAttribute('data-loaded-url');
+        }
+        saveStore(store);
+        renderWorkspace();
+      }
+
       function resolveEmbedModeForTab(tab) {
         if (!tab || !tab.url || String(tab.url).startsWith('/api/')) return;
+        if (tab.useProxy || tab.embedCheckedFor === tab.url) return;
         if (tab.proxyDecidedFor === tab.url) return;
         tab.proxyDecidedFor = tab.url;
 
@@ -2312,6 +2544,7 @@
           window.location.protocol === 'https:' && String(tab.url).toLowerCase().startsWith('http://');
         if (needsMixedContentProxy) {
           tab.useProxy = true;
+          tab.embedCheckedFor = tab.url;
           tab.embedReason = 'Conteúdo HTTP exibido via Proxy XIQI em sessão HTTPS';
           saveStore(store);
           renderWorkspace();
@@ -2321,15 +2554,22 @@
         fetch('/api/check-embed?url=' + encodeURIComponent(tab.url))
           .then(function (r) { return r.json(); })
           .then(function (info) {
-            if (!info || info.embeddable) return;
+            if (!info || info.embeddable) {
+              tab.embedCheckedFor = tab.url;
+              renderWorkspace();
+              return;
+            }
             if (tab.externalOpenedFor !== tab.url) {
               tab.externalOpenedFor = tab.url;
               tab.useProxy = false;
-              saveStore(store);
               window.open(tab.url, '_blank', 'noopener');
+              closeBlockedTabAndFallback(getActiveSession(), tab);
             }
           })
-          .catch(function () {});
+          .catch(function () {
+            tab.embedCheckedFor = tab.url;
+            renderWorkspace();
+          });
       }
 
       function renderWorkspace() {
@@ -2351,7 +2591,7 @@
 
           var urlInput = document.getElementById('tabUrlInput');
           if (document.activeElement !== urlInput) {
-            urlInput.value = activeTab.url;
+            urlInput.value = isLocalHomeUrl(activeTab.url) ? '' : activeTab.url;
           }
           document.getElementById('webExternalLink').href = activeTab.url;
 
@@ -2377,19 +2617,22 @@
             notice.classList.add('hidden');
           }
 
-          var targetSrc = computeIframeSrc(activeTab);
-          var nextSandbox = targetSrc.startsWith('/api/search')
-            ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
-            : 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads';
-          if (iframe.getAttribute('sandbox') !== nextSandbox) {
-            iframe.setAttribute('sandbox', nextSandbox);
+          var readyToLoadIframe = isInternalApi || Boolean(activeTab.useProxy) || activeTab.embedCheckedFor === activeTab.url;
+          if (readyToLoadIframe) {
+            var targetSrc = computeIframeSrc(activeTab);
+            var nextSandbox = targetSrc.startsWith('/api/search')
+              ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
+              : 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads';
+            if (iframe.getAttribute('sandbox') !== nextSandbox) {
+              iframe.setAttribute('sandbox', nextSandbox);
+            }
+            if (iframe.getAttribute('data-loaded-url') !== targetSrc) {
+              iframe.src = targetSrc;
+              iframe.setAttribute('data-loaded-url', targetSrc);
+            }
+          } else {
+            resolveEmbedModeForTab(activeTab);
           }
-          if (iframe.getAttribute('data-loaded-url') !== targetSrc) {
-            iframe.src = targetSrc;
-            iframe.setAttribute('data-loaded-url', targetSrc);
-          }
-
-          resolveEmbedModeForTab(activeTab);
         } else {
           tabView.classList.add('hidden');
           centerView.classList.remove('hidden');
@@ -2420,6 +2663,8 @@
         tab.useProxy = false;
         tab.embedReason = '';
         tab.proxyDecidedFor = '';
+        tab.embedCheckedFor = '';
+        tab.externalOpenedFor = '';
         saveStore(store);
         renderWorkspace();
       }
@@ -2436,7 +2681,9 @@
           historyIndex: 0,
           useProxy: false,
           embedReason: '',
-          proxyDecidedFor: ''
+          proxyDecidedFor: '',
+          embedCheckedFor: '',
+          externalOpenedFor: ''
         };
         session.tabs.push(tab);
         session.activeTabId = tab.id;
@@ -2451,6 +2698,20 @@
         if (!e.data || typeof e.data !== 'object') return;
         if (e.data.type === 'xiqi-open-url' && e.origin === window.location.origin && isSafeHttpUrl(e.data.url)) {
           openUrlInNewTab(e.data.url, e.data.title || extractDomain(e.data.url));
+        } else if (e.data.type === 'xiqi-open-ai' && e.origin === window.location.origin) {
+          var aiSess = getActiveSession();
+          var homeTab = aiSess.tabs.find(function (t) { return t.type === 'newtab'; });
+          if (!homeTab) {
+            homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+            aiSess.tabs.unshift(homeTab);
+          }
+          aiSess.activeTabId = homeTab.id;
+          aiSess.aiMode = true;
+          saveStore(store);
+          renderWorkspace();
+          if (typeof e.data.query === 'string' && e.data.query.trim()) {
+            submitAiPrompt(e.data.query.trim());
+          }
         } else if (e.data.type === 'xiqi-proxy-navigate' && typeof e.data.url === 'string' && /^https?:\/\//i.test(e.data.url) && isSafeHttpUrl(e.data.url)) {
           var safeNavUrl = e.data.url.slice(0, 2000);
           if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|169\.254\.|\[::1\]|0\.0\.0\.0|xiqios\b)/i.test(safeNavUrl)) return;
@@ -2572,17 +2833,72 @@
       /* Botao SAIR */
       document.getElementById('exitSessionBtn').addEventListener('click', async function () {
         try {
-          var resp = await fetch('/api/auth/logout', { method: 'POST' });
+          var resp = await fetch('/api/auth/logout', { method: 'POST', headers: buildApiHeaders() });
           var data = await resp.json().catch(function () { return {}; });
+          setAuthToken('');
           store.activeUser = null;
           store.users = Array.isArray(data.users) ? data.users : store.users;
           store.session = sanitizeSession(data.session || createDefaultSession());
         } catch (err) {
+          setAuthToken('');
           store.activeUser = null;
           store.session = createDefaultSession();
         }
         renderAll();
         openAuthPopover('login');
+      });
+
+      /* Modal: Configuracoes */
+      async function openSettingsModal() {
+        var session = getActiveSession();
+        document.getElementById('settingsThemeSelect').value = 'light';
+        document.getElementById('settingsEngineSelect').value = session.searchEngine || 'xiqi';
+        document.getElementById('settingsStatusMsg').textContent = '';
+        document.getElementById('settingsModal').classList.remove('hidden');
+        var sysBox = document.getElementById('settingsSystemDetails');
+        sysBox.textContent = 'Consultando status do sistema...';
+        try {
+          var sysResp = await fetch('/api/system');
+          var sysData = await sysResp.json().catch(function () { return {}; });
+          var aiResp = await fetch('/api/ai/status');
+          var aiData = await aiResp.json().catch(function () { return {}; });
+          sysBox.textContent =
+            (sysData.text || 'XIQI OS v1.0 ativo') +
+            '\n• Assistente XIQI AI: ' + (aiData.configured ? 'Chave configurada e pronta' : 'Aguardando XIQI_AI_KEY no .env') +
+            '\n• Teclado padrão: Português Brasil (ABNT2)';
+        } catch (err) {
+          sysBox.textContent = 'XIQI OS v1.0 — Núcleo XIQI Core x86_64 — Corporação Engecema';
+        }
+      }
+
+      document.getElementById('openSettingsBtn').addEventListener('click', openSettingsModal);
+      document.getElementById('closeSettingsModalBtn').addEventListener('click', function () {
+        document.getElementById('settingsModal').classList.add('hidden');
+      });
+      document.getElementById('settingsEngineSelect').addEventListener('change', function (e) {
+        var session = getActiveSession();
+        if (SEARCH_ENGINES[e.target.value]) {
+          session.searchEngine = e.target.value;
+          saveStore(store);
+          document.getElementById('settingsStatusMsg').textContent = 'Mecanismo de busca padrão atualizado!';
+        }
+      });
+      document.getElementById('settingsClearCacheBtn').addEventListener('click', function () {
+        var session = getActiveSession();
+        var homeTab = { id: 'tab-' + Date.now(), title: 'Nova Aba', type: 'newtab', url: '' };
+        session.tabs = [homeTab];
+        session.activeTabId = homeTab.id;
+        session.aiHistory = [];
+        session.activeAiConvId = null;
+        try { localStorage.clear(); } catch (err) {}
+        var iframe = document.getElementById('webIframe');
+        if (iframe) {
+          iframe.src = 'about:blank';
+          iframe.removeAttribute('data-loaded-url');
+        }
+        saveStore(store);
+        renderAll();
+        document.getElementById('settingsStatusMsg').textContent = 'Cache local e abas limpos com sucesso!';
       });
 
       /* Modal: Acesso Rapido */
@@ -2682,6 +2998,7 @@
         if (e.key === 'Escape') {
           closeAuthPopover();
           document.getElementById('quickAccessModal').classList.add('hidden');
+          document.getElementById('settingsModal').classList.add('hidden');
         }
       });
 
@@ -2829,8 +3146,8 @@
         return;
       }
       wn.style.display = "flex";
-      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);fetch("/api/notes").then(function(r){return r.ok?r.json():{}}).then(function(d){ta.value=(d&&d.text)||""}).catch(function(){st.style.color="#dc2626";st.textContent="Erro ao carregar notas"});sb.onclick=async function(){st.style.color="#16a34a";st.textContent="Salvando...";try{var r=await fetch("/api/notes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ta.value})});if(!r.ok){st.style.color="#dc2626";}st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";}catch(err){st.style.color="#dc2626";st.textContent="Falha de comunicação";}};}
-      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m[1]),op=m[2],numB=Number(m[3]);var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
+      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px;background:#ffffff;color:#0f172a";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);var ntHdr={};try{var ut=sessionStorage.getItem("xiqi_user_token");if(ut)ntHdr["x-user-token"]=ut;}catch(e){}fetch("/api/notes",{headers:ntHdr}).then(function(r){return r.ok?r.json():{}}).then(function(d){ta.value=(d&&d.text)||""}).catch(function(){st.style.color="#dc2626";st.textContent="Erro ao carregar notas"});sb.onclick=async function(){st.style.color="#16a34a";st.textContent="Salvando...";try{var pHdr=Object.assign({"Content-Type":"application/json"},ntHdr);var r=await fetch("/api/notes",{method:"POST",headers:pHdr,body:JSON.stringify({text:ta.value})});if(!r.ok){st.style.color="#dc2626";}st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";}catch(err){st.style.color="#dc2626";st.textContent="Falha de comunicação";}};}
+      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px;background:#ffffff;color:#0f172a";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m[1]),op=m[2],numB=Number(m[3]);var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
       else if(a==="sys"){
         wt.textContent="Sistema — XIQI OS";
         var sysInfo=document.createElement("div");
@@ -2846,7 +3163,7 @@
         try{var r=await fetch("/api/system");var d=await r.json();sysInfo.textContent=d.text||"XIQI OS ativo.";}catch(err){sysInfo.textContent="Não foi possível consultar o status do sistema.";}
       }
       else if(a==="cal"){wt.textContent="Data e Hora";wb.textContent=new Date().toLocaleString("pt-BR");}
-      else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (XIQI OS)":"Terminal (Console Seguro)";var kl=document.createElement("label");kl.textContent="Chave Mestra";kl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ki=document.createElement("input");ki.type="password";ki.autocomplete="off";ki.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px";var pr=document.createElement("pre");pr.style.cssText="background:#0f172a;color:#4ade80;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Informe a Chave Mestra acima e clique em Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls":"help";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace";var rb=document.createElement("button");rb.type="button";rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";var runCmd=async function(){try{var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json().catch(function(){return {output:"Erro de comunicação"}});pr.textContent=d.output||"(ok)";}catch(err){pr.textContent="Erro de comunicação com o servidor";}};rb.onclick=runCmd;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCmd();}});wb.appendChild(kl);wb.appendChild(ki);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}
+      else if(a==="term"||a==="files"){wt.textContent=a==="files"?"Arquivos (XIQI OS)":"Terminal (Console Seguro)";var kl=document.createElement("label");kl.textContent="Chave Mestra";kl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var kWrap=document.createElement("div");kWrap.className="password-field-wrap";kWrap.style.marginBottom="6px";var ki=document.createElement("input");ki.id="xiqiTermKeyInput";ki.type="password";ki.autocomplete="off";ki.className="form-input";var eyeOpen='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';var eyeClosed='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';var kEye=document.createElement("button");kEye.type="button";kEye.className="password-eye-btn";kEye.setAttribute("aria-label","Mostrar ou ocultar chave mestra");kEye.setAttribute("aria-pressed","false");kEye.innerHTML=eyeOpen;kEye.onclick=function(ev){ev.preventDefault();ev.stopPropagation();var s=ki.type==="password";ki.type=s?"text":"password";kEye.setAttribute("aria-pressed",s?"true":"false");kEye.innerHTML=s?eyeClosed:eyeOpen;ki.focus();};kWrap.appendChild(ki);kWrap.appendChild(kEye);var pr=document.createElement("pre");pr.style.cssText="background:#f8fafc;color:#0f172a;border:1px solid #cbd5e1;padding:8px;border-radius:6px;height:140px;overflow:auto;font-size:12px";pr.textContent="Informe a Chave Mestra acima e clique em Executar";var ci=document.createElement("input");ci.value=a==="files"?"ls":"help";ci.style.cssText="width:72%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace;background:#ffffff;color:#0f172a";var rb=document.createElement("button");rb.type="button";rb.textContent="Executar";rb.className="btn-sm btn-sm-accent";rb.style.marginLeft="6px";var runCmd=async function(){try{var r=await fetch("/api/terminal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cmd:ci.value,masterKey:ki.value})});var d=await r.json().catch(function(){return {output:"Erro de comunicação"}});pr.textContent=d.output||"(ok)";}catch(err){pr.textContent="Erro de comunicação com o servidor";}};rb.onclick=runCmd;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCmd();}});wb.appendChild(kl);wb.appendChild(kWrap);wb.appendChild(pr);wb.appendChild(ci);wb.appendChild(rb);}
       else if(a==="about"){wt.textContent="Sobre o Sistema";wb.textContent="XIQI OS v1.0 — Núcleo XIQI Core x86_64 (Edição Data Center Independente) — Corporação Engecema";}
     };
   });

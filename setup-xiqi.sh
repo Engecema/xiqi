@@ -184,11 +184,14 @@ install_xiqi_stack() {
   fi
 
   echo "[4/7] Copiando aplicação e núcleo XIQI OS para ${XIQI_BASE}/app..."
-  for f in package.json package-lock.json server.js index.html admin.html xiqi-browser.py .env.example; do
+  for f in package.json package-lock.json server.js index.html admin.html xiqi-browser.py .env.example .env; do
     if [ -f "${SCRIPT_DIR}/${f}" ]; then
       cp -f "${SCRIPT_DIR}/${f}" "${XIQI_BASE}/app/${f}"
     fi
   done
+  if [ -f "${XIQI_BASE}/app/.env" ]; then
+    chmod 600 "${XIQI_BASE}/app/.env" 2>/dev/null || true
+  fi
   if [ -f "${XIQI_BASE}/app/xiqi-browser.py" ]; then
     chmod 755 "${XIQI_BASE}/app/xiqi-browser.py"
   fi
@@ -262,6 +265,11 @@ cleanup_port() {
 load_env() {
   export PORT="${PORT:-3000}"
   export XIQI_CONFIG_DIR="${XIQI_CONF}"
+  if [ -f "${XIQI_APP}/.env" ]; then
+    set -a
+    . "${XIQI_APP}/.env"
+    set +a
+  fi
   if [ -f "${XIQI_CONF}/xiqi.env" ]; then
     set -a
     . "${XIQI_CONF}/xiqi.env"
@@ -358,13 +366,71 @@ EOF
     git config --system --add safe.directory /opt/xiqi/app 2>/dev/null || true
   fi
 
-  # Configuração de sessão gráfica direta via startx + xfwm4 + xiqi-browser.py (sem tela de login do SO)
-  mkdir -p "${ROOT_PREFIX}/etc/X11" "${ROOT_PREFIX}/home/xiqi"
+  # Configuração de teclado ABNT2 (pt-BR), vídeo estável e sessão gráfica direta via startx + xfwm4 + xiqi-browser.py
+  mkdir -p "${ROOT_PREFIX}/etc/X11" "${ROOT_PREFIX}/etc/X11/xorg.conf.d" "${ROOT_PREFIX}/etc/default" "${ROOT_PREFIX}/home/xiqi"
   cat << 'EOF' > "${ROOT_PREFIX}/etc/X11/Xwrapper.config"
 allowed_users=anybody
 needs_root_rights=yes
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/X11/Xwrapper.config"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/X11/xorg.conf.d/00-keyboard.conf"
+Section "InputClass"
+  Identifier "system-keyboard"
+  MatchIsKeyboard "on"
+  Option "XkbModel" "abnt2"
+  Option "XkbLayout" "br"
+EndSection
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/X11/xorg.conf.d/00-keyboard.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/default/keyboard"
+XKBMODEL="abnt2"
+XKBLAYOUT="br"
+XKBVARIANT=""
+XKBOPTIONS=""
+BACKSPACE="guess"
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/default/keyboard"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-xiqi-video.conf"
+Section "ServerFlags"
+  Option "BlankTime" "0"
+  Option "StandbyTime" "0"
+  Option "SuspendTime" "0"
+  Option "OffTime" "0"
+  Option "DontVTSwitch" "false"
+EndSection
+
+Section "Monitor"
+  Identifier "DefaultMonitor"
+  Option "DPMS" "false"
+EndSection
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-xiqi-video.conf"
+
+  cat << 'EOF' > "${XIQI_BASE}/bin/xiqi-keyboard"
+#!/bin/sh
+MODEL="${1:-abnt2}"
+LAYOUT="${2:-br}"
+VARIANT="${3:-}"
+if command -v setxkbmap >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+  if [ -n "${VARIANT}" ]; then
+    setxkbmap -model "${MODEL}" -layout "${LAYOUT}" -variant "${VARIANT}" 2>/dev/null || setxkbmap -layout "${LAYOUT}" 2>/dev/null || true
+  else
+    setxkbmap -model "${MODEL}" -layout "${LAYOUT}" 2>/dev/null || setxkbmap -layout "${LAYOUT}" 2>/dev/null || true
+  fi
+fi
+if command -v loadkeys >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
+  loadkeys br-abnt2 2>/dev/null || true
+fi
+EOF
+  chmod 755 "${XIQI_BASE}/bin/xiqi-keyboard"
+  ln -sf "/opt/xiqi/bin/xiqi-keyboard" "${ROOT_PREFIX}/usr/local/bin/xiqi-keyboard"
+
+  if [ -z "${ROOT_PREFIX}" ] && command -v loadkeys >/dev/null 2>&1; then
+    loadkeys br-abnt2 2>/dev/null || true
+  fi
 
   cat << 'EOF' > "${ROOT_PREFIX}/home/xiqi/.xinitrc"
 #!/bin/sh
@@ -373,13 +439,29 @@ export USER=xiqi
 export DISPLAY="${DISPLAY:-:0}"
 export XIQI_URL="http://127.0.0.1:3000"
 export XIQI_FULLSCREEN="1"
+export GDK_BACKEND=x11
+export GSK_RENDERER=cairo
+export GTK_THEME="Adwaita:light"
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+export WEBKIT_FORCE_SANDBOX=0
 export LIBGL_ALWAYS_SOFTWARE=1
 
+if command -v setterm >/dev/null 2>&1; then
+  setterm -blank 0 -powerdown 0 2>/dev/null || true
+fi
 if command -v xset >/dev/null 2>&1; then
   xset s off -dpms s noblank 2>/dev/null || true
+fi
+if command -v xrandr >/dev/null 2>&1; then
+  xrandr --auto 2>/dev/null || true
+fi
+if command -v xsetroot >/dev/null 2>&1; then
+  xsetroot -solid "#ffffff" 2>/dev/null || true
+fi
+if command -v setxkbmap >/dev/null 2>&1; then
+  setxkbmap -model abnt2 -layout br 2>/dev/null || setxkbmap br 2>/dev/null || true
 fi
 
 # Gerenciador de janelas mínimo xfwm4 (sem painéis, sem rodapés externos)
@@ -388,6 +470,31 @@ xfwm4 --compositor=off >/dev/null 2>&1 &
 exec /usr/bin/python3 /opt/xiqi/app/xiqi-browser.py
 EOF
   chmod 755 "${ROOT_PREFIX}/home/xiqi/.xinitrc"
+
+  # Hook de retorno de suspensão para evitar tela escura/travada ao acordar o monitor
+  for sleep_dir in "${ROOT_PREFIX}/etc/elogind/system-sleep" "${ROOT_PREFIX}/etc/systemd/system-sleep"; do
+    mkdir -p "${sleep_dir}"
+    cat << 'EOF' > "${sleep_dir}/90-xiqi-video.sh"
+#!/bin/sh
+case "${1:-}" in
+  post|thaw)
+    export DISPLAY=":0"
+    export XAUTHORITY="/home/xiqi/.Xauthority"
+    if command -v xrandr >/dev/null 2>&1; then
+      xrandr --auto 2>/dev/null || true
+    fi
+    if command -v xset >/dev/null 2>&1; then
+      xset dpms force on 2>/dev/null || true
+      xset s off -dpms s noblank 2>/dev/null || true
+    fi
+    if command -v setxkbmap >/dev/null 2>&1; then
+      setxkbmap -model abnt2 -layout br 2>/dev/null || true
+    fi
+    ;;
+esac
+EOF
+    chmod 755 "${sleep_dir}/90-xiqi-video.sh"
+  done
 
   if [ -z "${ROOT_PREFIX}" ]; then
     chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true
@@ -424,6 +531,11 @@ respawn_max="0"
 
 export PORT="${PORT:-3000}"
 export XIQI_CONFIG_DIR="${XIQI_CONFIG_DIR:-/opt/xiqi/config}"
+if [ -f "/opt/xiqi/app/.env" ]; then
+  set -a
+  . "/opt/xiqi/app/.env"
+  set +a
+fi
 if [ -f "${XIQI_CONFIG_DIR}/xiqi.env" ]; then
   set -a
   . "${XIQI_CONFIG_DIR}/xiqi.env"
@@ -432,8 +544,8 @@ fi
 export XIQI_AI_KEY="${XIQI_AI_KEY:-}"
 
 depend() {
-  need localmount
-  after loopback
+  need localmount net
+  after loopback net
 }
 
 start_pre() {
@@ -481,23 +593,45 @@ description="XIQI OS Direct Browser Display (Corporação Engecema)"
 pidfile="/run/xiqi-display.pid"
 
 depend() {
-  need localmount
-  after xiqios
+  need localmount net
+  after net xiqios
 }
 
 start() {
   ebegin "Iniciando interface gráfica direta XIQI OS (usuário neutro xiqi)"
   mkdir -p /opt/xiqi/logs /tmp/.X11-unix
   chmod 1777 /tmp/.X11-unix
+  rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 2>/dev/null || true
   chown xiqi:xiqi /home/xiqi /home/xiqi/.xinitrc 2>/dev/null || true
   touch /opt/xiqi/logs/xiqi-display.log
   chown xiqi:xiqi /opt/xiqi/logs/xiqi-display.log 2>/dev/null || true
+
+  i=0
+  while [ "$i" -lt 20 ]; do
+    if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 1 "http://127.0.0.1:3000/api/system" >/dev/null 2>&1; then
+      break
+    fi
+    i=$((i + 1))
+    sleep 0.5
+  done
+
+  if command -v chvt >/dev/null 2>&1; then
+    chvt 7 2>/dev/null || true
+  fi
 
   start-stop-daemon --start --background --make-pidfile \
     --pidfile "${pidfile}" \
     --user xiqi --group xiqi \
     --env HOME=/home/xiqi \
     --env USER=xiqi \
+    --env GDK_BACKEND=x11 \
+    --env GSK_RENDERER=cairo \
+    --env GTK_THEME=Adwaita:light \
+    --env WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    --env WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+    --env WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+    --env WEBKIT_FORCE_SANDBOX=0 \
+    --env LIBGL_ALWAYS_SOFTWARE=1 \
     --env XIQI_URL=http://127.0.0.1:3000 \
     --env XIQI_FULLSCREEN=1 \
     --stdout /opt/xiqi/logs/xiqi-display.log \
@@ -509,6 +643,7 @@ start() {
 stop() {
   ebegin "Encerrando interface gráfica direta XIQI OS"
   start-stop-daemon --stop --quiet --pidfile "${pidfile}"
+  rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 2>/dev/null || true
   eend $?
 }
 EOF
@@ -533,14 +668,15 @@ EOF
   cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqios.service"
 [Unit]
 Description=XIQI OS Corporate Server (Corporação Engecema)
-After=local-fs.target
+After=local-fs.target network.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/xiqi/app
 Environment=PORT=3000
 Environment=XIQI_CONFIG_DIR=/opt/xiqi/config
-Environment=XIQI_AI_KEY=
+EnvironmentFile=-/opt/xiqi/app/.env
+EnvironmentFile=-/opt/xiqi/config/xiqi.env
 ExecStart=/usr/local/bin/node /opt/xiqi/app/server.js
 Restart=always
 RestartSec=1
@@ -552,8 +688,9 @@ EOF
   cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-display.service"
 [Unit]
 Description=XIQI OS Direct Browser Display (Corporação Engecema)
-After=xiqios.service
-Wants=xiqios.service
+After=network-online.target xiqios.service
+Wants=network-online.target xiqios.service
+Conflicts=getty@tty1.service
 
 [Service]
 Type=simple
@@ -562,11 +699,20 @@ Group=xiqi
 WorkingDirectory=/home/xiqi
 Environment=HOME=/home/xiqi
 Environment=USER=xiqi
+Environment=GDK_BACKEND=x11
+Environment=GSK_RENDERER=cairo
+Environment=GTK_THEME=Adwaita:light
+Environment=WEBKIT_DISABLE_COMPOSITING_MODE=1
+Environment=WEBKIT_DISABLE_DMABUF_RENDERER=1
+Environment=WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+Environment=WEBKIT_FORCE_SANDBOX=0
+Environment=LIBGL_ALWAYS_SOFTWARE=1
 Environment=XIQI_URL=http://127.0.0.1:3000
 Environment=XIQI_FULLSCREEN=1
+ExecStartPre=-/bin/sh -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; command -v chvt >/dev/null 2>&1 && chvt 7 || true'
 ExecStart=/usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp
 Restart=always
-RestartSec=3
+RestartSec=2
 
 [Install]
 WantedBy=graphical.target
@@ -577,6 +723,7 @@ EOF
       systemctl disable "${old_dm}" 2>/dev/null || true
     done
     systemctl daemon-reload || true
+    systemctl set-default graphical.target 2>/dev/null || true
     systemctl enable xiqios.service || true
     systemctl enable xiqi-display.service || true
     systemctl restart xiqios.service || true
@@ -589,6 +736,470 @@ EOF
   else
     echo "Erro: branding-xiqi.sh não encontrado em ${SCRIPT_DIR}." >&2
     exit 1
+  fi
+
+  configure_silent_boot_and_fsck "${ROOT_PREFIX}"
+  configure_https_reverse_proxy "${ROOT_PREFIX}"
+  configure_fast_network_and_ntp "${ROOT_PREFIX}"
+}
+
+configure_silent_boot_and_fsck() {
+  ROOT_PREFIX="${1:-}"
+  QUIET_OPTS="quiet loglevel=0 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer"
+
+  mkdir -p "${ROOT_PREFIX}/etc/conf.d" "${ROOT_PREFIX}/etc/default" "${ROOT_PREFIX}/boot"
+
+  # Suprimir logs e barras de fsck na inicialização e no reinício
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/conf.d/fsck"
+fsck_args="-p -C0"
+rc_fsck_quiet="YES"
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/conf.d/fsck"
+
+  # Forçar TIMEOUT 0 real e parâmetros silenciosos no extlinux e GRUB após branding-xiqi.sh
+  if [ -f "${ROOT_PREFIX}/etc/update-extlinux.conf" ]; then
+    sed -i 's|^timeout=.*|timeout=0|g' "${ROOT_PREFIX}/etc/update-extlinux.conf" 2>/dev/null || true
+    if grep -q '^default_kernel_opts=' "${ROOT_PREFIX}/etc/update-extlinux.conf"; then
+      sed -i "s|^default_kernel_opts=.*|default_kernel_opts=\"${QUIET_OPTS}\"|g" "${ROOT_PREFIX}/etc/update-extlinux.conf"
+    else
+      echo "default_kernel_opts=\"${QUIET_OPTS}\"" >> "${ROOT_PREFIX}/etc/update-extlinux.conf"
+    fi
+  fi
+
+  if [ -f "${ROOT_PREFIX}/boot/extlinux.conf" ]; then
+    TMP_EXT_ZERO="${ROOT_PREFIX}/boot/extlinux.conf.zero"
+    awk -v qopts="${QUIET_OPTS}" '
+      /^TIMEOUT / { print "TIMEOUT 0"; next; }
+      /^TOTALTIMEOUT / { print "TOTALTIMEOUT 0"; next; }
+      /^PROMPT / { print "PROMPT 0"; next; }
+      /^[[:space:]]*APPEND / {
+        line=$0
+        gsub(/[[:space:]]+(quiet|loglevel=[0-9]+|vt\.global_cursor_default=[0-9]+|rd\.udev\.log_level=[0-9]+|systemd\.show_status=[a-z]+|rd\.systemd\.show_status=[a-z]+|fsck\.mode=[a-z]+|fastboot|fbcon=nodefer|debug|verbose)/, "", line)
+        print line " " qopts
+        next
+      }
+      { print }
+    ' "${ROOT_PREFIX}/boot/extlinux.conf" > "${TMP_EXT_ZERO}"
+    mv "${TMP_EXT_ZERO}" "${ROOT_PREFIX}/boot/extlinux.conf"
+    chmod 644 "${ROOT_PREFIX}/boot/extlinux.conf"
+  fi
+
+  if [ -z "${ROOT_PREFIX}" ] && command -v update-extlinux >/dev/null 2>&1 && [ -f /etc/update-extlinux.conf ]; then
+    update-extlinux >/dev/null 2>&1 || true
+  fi
+
+  cat << EOF > "${ROOT_PREFIX}/etc/default/grub"
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=0
+GRUB_RECORDFAIL_TIMEOUT=0
+GRUB_TIMEOUT_STYLE=hidden
+GRUB_HIDDEN_TIMEOUT=0
+GRUB_HIDDEN_TIMEOUT_QUIET=true
+GRUB_DISTRIBUTOR="XIQI OS v1.0 - Corporação Engecema"
+GRUB_CMDLINE_LINUX_DEFAULT="${QUIET_OPTS}"
+GRUB_CMDLINE_LINUX="${QUIET_OPTS}"
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/default/grub"
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if command -v update-grub >/dev/null 2>&1; then
+      update-grub >/dev/null 2>&1 || true
+    elif command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
+      grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ] && [ -d "${ROOT_PREFIX}/boot/grub" ]; then
+    chroot "${ROOT_PREFIX}" sh -c 'if command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1 || true; elif command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true; fi' || true
+  fi
+
+  if [ -f "${ROOT_PREFIX}/boot/grub/grub.cfg" ]; then
+    sed -i "s|set timeout=[0-9-]*|set timeout=0|g; s|set timeout_style=[^[:space:]]*|set timeout_style=hidden|g" "${ROOT_PREFIX}/boot/grub/grub.cfg" 2>/dev/null || true
+  fi
+}
+
+configure_https_reverse_proxy() {
+  ROOT_PREFIX="${1:-}"
+  XIQI_BASE="${ROOT_PREFIX}/opt/xiqi"
+  CERT_DIR="${XIQI_BASE}/config/certs"
+  mkdir -p "${CERT_DIR}" "${ROOT_PREFIX}/etc"
+  chmod 750 "${CERT_DIR}"
+
+  # Garantir resolução local para xiqios e xiqios.local sem alterar entradas existentes
+  if [ -f "${ROOT_PREFIX}/etc/hosts" ]; then
+    if ! grep -qw 'xiqios' "${ROOT_PREFIX}/etc/hosts" 2>/dev/null; then
+      printf '\n127.0.0.1 xiqios xiqios.local\n' >> "${ROOT_PREFIX}/etc/hosts"
+    fi
+  else
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/hosts"
+127.0.0.1   localhost xiqios xiqios.local
+::1         localhost xiqios xiqios.local
+EOF
+  fi
+
+  # Gerar Autoridade Certificadora local + certificado TLS confiável para xiqios e IPs da máquina
+  if command -v openssl >/dev/null 2>&1; then
+    SAN_LIST="DNS:xiqios,DNS:xiqios.local,DNS:localhost,IP:127.0.0.1,IP:192.168.1.5"
+    if [ -z "${ROOT_PREFIX}" ] && command -v ip >/dev/null 2>&1; then
+      for ip4 in $(ip -4 addr show scope global 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1); do
+        case ",${SAN_LIST}," in
+          *",IP:${ip4},"*) ;;
+          *) SAN_LIST="${SAN_LIST},IP:${ip4}" ;;
+        esac
+      done
+    fi
+
+    if [ ! -f "${CERT_DIR}/xiqi-ca.crt" ] || [ ! -f "${CERT_DIR}/xiqi-ca.key" ]; then
+      openssl genrsa -out "${CERT_DIR}/xiqi-ca.key" 2048 >/dev/null 2>&1
+      openssl req -x509 -new -nodes -key "${CERT_DIR}/xiqi-ca.key" -sha256 -days 3650 \
+        -subj "/O=Corporacao Engecema/OU=XIQI OS/CN=XIQI OS Local Root CA" \
+        -out "${CERT_DIR}/xiqi-ca.crt" >/dev/null 2>&1
+    fi
+
+    cat << EOF > "${CERT_DIR}/xiqios-san.cnf"
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+O = Corporacao Engecema
+OU = XIQI OS
+CN = xiqios
+
+[v3_req]
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = ${SAN_LIST}
+EOF
+
+    openssl genrsa -out "${CERT_DIR}/xiqios.key" 2048 >/dev/null 2>&1
+    openssl req -new -key "${CERT_DIR}/xiqios.key" -out "${CERT_DIR}/xiqios.csr" \
+      -config "${CERT_DIR}/xiqios-san.cnf" >/dev/null 2>&1
+    openssl x509 -req -in "${CERT_DIR}/xiqios.csr" \
+      -CA "${CERT_DIR}/xiqi-ca.crt" -CAkey "${CERT_DIR}/xiqi-ca.key" -CAcreateserial \
+      -out "${CERT_DIR}/xiqios.crt" -days 3650 -sha256 \
+      -extensions v3_req -extfile "${CERT_DIR}/xiqios-san.cnf" >/dev/null 2>&1
+    rm -f "${CERT_DIR}/xiqios.csr"
+    chmod 600 "${CERT_DIR}/xiqi-ca.key" "${CERT_DIR}/xiqios.key" 2>/dev/null || true
+    chmod 644 "${CERT_DIR}/xiqi-ca.crt" "${CERT_DIR}/xiqios.crt" "${CERT_DIR}/xiqios-san.cnf" 2>/dev/null || true
+
+    # Instalar CA raiz confiável no sistema e no banco NSS do usuário xiqi
+    if [ -d "${ROOT_PREFIX}/usr/local/share/ca-certificates" ] || [ -z "${ROOT_PREFIX}" ]; then
+      mkdir -p "${ROOT_PREFIX}/usr/local/share/ca-certificates"
+      cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/usr/local/share/ca-certificates/xiqi-ca.crt"
+    fi
+    if [ -d "${ROOT_PREFIX}/etc/pki/ca-trust/source/anchors" ]; then
+      cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/etc/pki/ca-trust/source/anchors/xiqi-ca.crt"
+    fi
+    if [ -d "${ROOT_PREFIX}/etc/ssl/certs" ]; then
+      cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/etc/ssl/certs/xiqi-ca.pem"
+    fi
+
+    if [ -z "${ROOT_PREFIX}" ]; then
+      if command -v update-ca-certificates >/dev/null 2>&1; then
+        update-ca-certificates >/dev/null 2>&1 || true
+      elif command -v update-ca-trust >/dev/null 2>&1; then
+        update-ca-trust extract >/dev/null 2>&1 || true
+      fi
+      if command -v certutil >/dev/null 2>&1; then
+        mkdir -p /home/xiqi/.pki/nssdb
+        certutil -N --empty-password -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
+        certutil -D -n "XIQI OS Local Root CA" -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
+        certutil -A -t "C,," -n "XIQI OS Local Root CA" -i "${CERT_DIR}/xiqi-ca.crt" -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
+        chown -R xiqi:xiqi /home/xiqi/.pki 2>/dev/null || true
+      fi
+    elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+      chroot "${ROOT_PREFIX}" sh -c 'command -v update-ca-certificates >/dev/null 2>&1 && update-ca-certificates >/dev/null 2>&1 || true' || true
+    fi
+  fi
+
+  # Proxy reverso HTTPS nativo em Node.js (porta 80 -> 443 e 443 -> 127.0.0.1:3000) como fallback universal
+  cat << 'EOF' > "${XIQI_BASE}/bin/xiqi-https-proxy.js"
+'use strict';
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
+const net = require('net');
+
+const CERT_FILE = '/opt/xiqi/config/certs/xiqios.crt';
+const KEY_FILE = '/opt/xiqi/config/certs/xiqios.key';
+const TARGET_HOST = '127.0.0.1';
+const TARGET_PORT = Number(process.env.PORT) || 3000;
+
+function forwardHttp(req, res) {
+  const headers = Object.assign({}, req.headers, {
+    'x-forwarded-proto': 'https',
+    'x-forwarded-for': (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'] + ', ' : '') + (req.socket.remoteAddress || '127.0.0.1'),
+    'x-forwarded-host': req.headers.host || 'xiqios'
+  });
+  const proxyReq = http.request({
+    hostname: TARGET_HOST,
+    port: TARGET_PORT,
+    path: req.url,
+    method: req.method,
+    headers
+  }, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+  proxyReq.on('error', () => {
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    res.end('XIQI OS indisponível no momento.');
+  });
+  req.pipe(proxyReq);
+}
+
+function forwardUpgrade(req, socket, head) {
+  const upstream = net.connect(TARGET_PORT, TARGET_HOST, () => {
+    let raw = `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n`;
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
+    }
+    raw += 'X-Forwarded-Proto: https\r\n\r\n';
+    upstream.write(raw);
+    if (head && head.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  upstream.on('error', () => socket.destroy());
+  socket.on('error', () => upstream.destroy());
+}
+
+if (fs.existsSync(CERT_FILE) && fs.existsSync(KEY_FILE)) {
+  const tlsServer = https.createServer({
+    cert: fs.readFileSync(CERT_FILE),
+    key: fs.readFileSync(KEY_FILE)
+  }, forwardHttp);
+  tlsServer.on('upgrade', forwardUpgrade);
+  tlsServer.listen(443, '0.0.0.0');
+}
+
+const redirectServer = http.createServer((req, res) => {
+  const host = String(req.headers.host || 'xiqios').split(':')[0];
+  res.writeHead(301, { Location: `https://${host}${req.url || '/'}` });
+  res.end();
+});
+redirectServer.listen(80, '0.0.0.0');
+EOF
+  chmod 755 "${XIQI_BASE}/bin/xiqi-https-proxy.js"
+
+  mkdir -p "${ROOT_PREFIX}/etc/init.d" "${ROOT_PREFIX}/etc/systemd/system"
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqi-https"
+#!/sbin/openrc-run
+
+name="xiqi-https"
+description="XIQI OS Local HTTPS Reverse Proxy (443 -> 3000)"
+command="/usr/local/bin/node"
+command_args="/opt/xiqi/bin/xiqi-https-proxy.js"
+supervisor="supervise-daemon"
+pidfile="/run/xiqi-https.pid"
+output_log="/opt/xiqi/logs/xiqi-https.log"
+error_log="/opt/xiqi/logs/xiqi-https.log"
+
+depend() {
+  need localmount net
+  after net xiqios
+}
+EOF
+  chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqi-https"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-https.service"
+[Unit]
+Description=XIQI OS Local HTTPS Reverse Proxy (443 -> 3000)
+After=network.target xiqios.service
+Wants=xiqios.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/node /opt/xiqi/bin/xiqi-https-proxy.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  PROXY_ENGINE="node"
+  if command -v caddy >/dev/null 2>&1 || [ -x "${ROOT_PREFIX}/usr/bin/caddy" ] || [ -x "${ROOT_PREFIX}/usr/sbin/caddy" ]; then
+    PROXY_ENGINE="caddy"
+    mkdir -p "${ROOT_PREFIX}/etc/caddy"
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/caddy/Caddyfile"
+:80 {
+  redir https://{host}{uri} permanent
+}
+
+:443 {
+  tls /opt/xiqi/config/certs/xiqios.crt /opt/xiqi/config/certs/xiqios.key
+  reverse_proxy 127.0.0.1:3000 {
+    header_up X-Forwarded-Proto https
+    header_up X-Forwarded-Host {host}
+  }
+}
+EOF
+    chmod 644 "${ROOT_PREFIX}/etc/caddy/Caddyfile"
+  elif command -v nginx >/dev/null 2>&1 || [ -x "${ROOT_PREFIX}/usr/sbin/nginx" ]; then
+    PROXY_ENGINE="nginx"
+    mkdir -p "${ROOT_PREFIX}/etc/nginx/http.d" "${ROOT_PREFIX}/etc/nginx/sites-available" "${ROOT_PREFIX}/etc/nginx/sites-enabled"
+    NGINX_CONF='server {
+  listen 80 default_server;
+  server_name _;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl default_server;
+  server_name _;
+  ssl_certificate /opt/xiqi/config/certs/xiqios.crt;
+  ssl_certificate_key /opt/xiqi/config/certs/xiqios.key;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  client_max_body_size 25m;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+'
+    printf '%s\n' "${NGINX_CONF}" > "${ROOT_PREFIX}/etc/nginx/http.d/xiqi.conf"
+    printf '%s\n' "${NGINX_CONF}" > "${ROOT_PREFIX}/etc/nginx/sites-available/xiqi.conf"
+    rm -f "${ROOT_PREFIX}/etc/nginx/http.d/default.conf" "${ROOT_PREFIX}/etc/nginx/sites-enabled/default" 2>/dev/null || true
+    ln -sf /etc/nginx/sites-available/xiqi.conf "${ROOT_PREFIX}/etc/nginx/sites-enabled/xiqi.conf"
+  fi
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if command -v rc-update >/dev/null 2>&1; then
+      if [ "${PROXY_ENGINE}" = "caddy" ]; then
+        rc-update add caddy default 2>/dev/null || true
+        rc-service caddy restart 2>/dev/null || true
+      elif [ "${PROXY_ENGINE}" = "nginx" ]; then
+        rc-update add nginx default 2>/dev/null || true
+        rc-service nginx restart 2>/dev/null || true
+      else
+        rc-update add xiqi-https default 2>/dev/null || true
+        rc-service xiqi-https restart 2>/dev/null || true
+      fi
+    elif command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload 2>/dev/null || true
+      if [ "${PROXY_ENGINE}" = "caddy" ]; then
+        systemctl enable caddy 2>/dev/null || true
+        systemctl restart caddy 2>/dev/null || true
+      elif [ "${PROXY_ENGINE}" = "nginx" ]; then
+        systemctl enable nginx 2>/dev/null || true
+        systemctl restart nginx 2>/dev/null || true
+      else
+        systemctl enable xiqi-https.service 2>/dev/null || true
+        systemctl restart xiqi-https.service 2>/dev/null || true
+      fi
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+    if [ "${PROXY_ENGINE}" = "caddy" ]; then
+      chroot "${ROOT_PREFIX}" rc-update add caddy default 2>/dev/null || true
+    elif [ "${PROXY_ENGINE}" = "nginx" ]; then
+      chroot "${ROOT_PREFIX}" rc-update add nginx default 2>/dev/null || true
+    else
+      chroot "${ROOT_PREFIX}" rc-update add xiqi-https default 2>/dev/null || true
+    fi
+  fi
+}
+
+configure_fast_network_and_ntp() {
+  ROOT_PREFIX="${1:-}"
+  mkdir -p "${ROOT_PREFIX}/etc/sysctl.d" "${ROOT_PREFIX}/etc/udhcpc" "${ROOT_PREFIX}/etc/dhcp" "${ROOT_PREFIX}/etc/NetworkManager/conf.d" "${ROOT_PREFIX}/etc/chrony" "${ROOT_PREFIX}/etc/systemd/timesyncd.conf.d"
+
+  # 1. DNS rápido (1.1.1.1 e 8.8.8.8) sem atrasos de lookup IPv6
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/resolv.conf"
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+options timeout:1 attempts:2 single-request-reopen
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/resolv.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/udhcpc/udhcpc.conf"
+RESOLV_CONF="no"
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/udhcpc/udhcpc.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/dhcp/dhclient.conf"
+supersede domain-name-servers 1.1.1.1, 8.8.8.8;
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/dhcp/dhclient.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/NetworkManager/conf.d/90-xiqi-dns.conf"
+[main]
+dns=none
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/NetworkManager/conf.d/90-xiqi-dns.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/gai.conf"
+precedence ::ffff:0:0/96  100
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/gai.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/sysctl.d/99-xiqi-network.conf"
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/sysctl.d/99-xiqi-network.conf"
+
+  # 2. Sincronização de relógio NTP (chronyd / ntpd / timesyncd) para evitar atrasos em códigos 2FA
+  CHRONY_CONF="server time.cloudflare.com iburst
+server time.google.com iburst
+pool pool.ntp.org iburst
+makestep 1.0 3
+rtcsync
+driftfile /var/lib/chrony/chrony.drift"
+  printf '%s\n' "${CHRONY_CONF}" > "${ROOT_PREFIX}/etc/chrony/chrony.conf"
+  printf '%s\n' "${CHRONY_CONF}" > "${ROOT_PREFIX}/etc/chrony.conf"
+  chmod 644 "${ROOT_PREFIX}/etc/chrony/chrony.conf" "${ROOT_PREFIX}/etc/chrony.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/ntp.conf"
+server time.cloudflare.com iburst
+server time.google.com iburst
+pool pool.ntp.org iburst
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/ntp.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/timesyncd.conf.d/90-xiqi-ntp.conf"
+[Time]
+NTP=time.cloudflare.com time.google.com
+FallbackNTP=pool.ntp.org
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/systemd/timesyncd.conf.d/90-xiqi-ntp.conf"
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    sysctl -q -p /etc/sysctl.d/99-xiqi-network.conf 2>/dev/null || true
+    if command -v rc-update >/dev/null 2>&1; then
+      if [ -x /etc/init.d/chronyd ]; then
+        rc-update add chronyd default 2>/dev/null || true
+        rc-service chronyd restart 2>/dev/null || true
+      elif [ -x /etc/init.d/ntpd ]; then
+        rc-update add ntpd default 2>/dev/null || true
+        rc-service ntpd restart 2>/dev/null || true
+      fi
+    elif command -v systemctl >/dev/null 2>&1; then
+      if systemctl list-unit-files chronyd.service >/dev/null 2>&1; then
+        systemctl enable --now chronyd.service 2>/dev/null || true
+      elif systemctl list-unit-files chrony.service >/dev/null 2>&1; then
+        systemctl enable --now chrony.service 2>/dev/null || true
+      elif systemctl list-unit-files systemd-timesyncd.service >/dev/null 2>&1; then
+        systemctl enable --now systemd-timesyncd.service 2>/dev/null || true
+      fi
+    fi
+    if command -v chronyc >/dev/null 2>&1; then
+      chronyc makestep >/dev/null 2>&1 || true
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+    chroot "${ROOT_PREFIX}" sh -c '
+      if [ -x /etc/init.d/chronyd ]; then rc-update add chronyd default 2>/dev/null || true;
+      elif [ -x /etc/init.d/ntpd ]; then rc-update add ntpd default 2>/dev/null || true; fi
+    ' || true
   fi
 }
 
@@ -705,12 +1316,12 @@ if [ "${MODE}" = "disk" ]; then
   if [ -n "${PART_EFI}" ]; then
     UUID_EFI="$(blkid -s UUID -o value "${PART_EFI}")"
     cat << EOF > "${MNT_DIR}/etc/fstab"
-UUID=${UUID_ROOT}  /          ext4  defaults,noatime,errors=remount-ro  0  1
-UUID=${UUID_EFI}   /boot/efi  vfat  umask=0077                          0  2
+UUID=${UUID_ROOT}  /          ext4  defaults,noatime,errors=remount-ro  0  0
+UUID=${UUID_EFI}   /boot/efi  vfat  umask=0077                          0  0
 EOF
   else
     cat << EOF > "${MNT_DIR}/etc/fstab"
-UUID=${UUID_ROOT}  /          ext4  defaults,noatime,errors=remount-ro  0  1
+UUID=${UUID_ROOT}  /          ext4  defaults,noatime,errors=remount-ro  0  0
 EOF
   fi
 

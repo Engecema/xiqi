@@ -4,6 +4,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
 const dns = require('dns').promises;
+const dnsSync = require('dns');
+if (typeof dnsSync.setDefaultResultOrder === 'function') {
+  dnsSync.setDefaultResultOrder('ipv4first');
+}
 const net = require('net');
 const http = require('http');
 const https = require('https');
@@ -15,6 +19,49 @@ app.set('trust proxy', 'loopback');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 const INDEX_PATH = path.join(__dirname, 'index.html');
+
+function parseEnvFileIntoMap(filePath) {
+  const out = {};
+  try {
+    if (!fs.existsSync(filePath)) return out;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    for (const rawLine of raw.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const cleaned = line.startsWith('export ') ? line.slice(7).trim() : line;
+      const eq = cleaned.indexOf('=');
+      if (eq <= 0) continue;
+      const key = cleaned.slice(0, eq).trim();
+      let val = cleaned.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key) out[key] = val;
+    }
+  } catch {
+    // ignora erro ao ler arquivo .env opcional
+  }
+  return out;
+}
+
+function loadEnvFiles() {
+  const candidates = [
+    path.join(__dirname, '.env'),
+    path.join(__dirname, '.env.local'),
+    path.join(process.env.XIQI_CONFIG_DIR || '/opt/xiqi/config', 'xiqi.env'),
+    path.join(__dirname, '.xiqi-config', 'xiqi.env')
+  ];
+  for (const filePath of candidates) {
+    const parsed = parseEnvFileIntoMap(filePath);
+    for (const [k, v] of Object.entries(parsed)) {
+      if (v && (!process.env[k] || !String(process.env[k]).trim())) {
+        process.env[k] = v;
+      }
+    }
+  }
+}
+
+loadEnvFiles();
 
 const CONFIG_DIR = (() => {
   const preferred = process.env.XIQI_CONFIG_DIR || '/opt/xiqi/config';
@@ -44,8 +91,17 @@ const MAX_MAP_ENTRIES = 20000;
 
 let cachedXiqiAI = null;
 let cachedXiqiAIKey = '';
+function resolveXiqiAiKey() {
+  let key = String(process.env.XIQI_AI_KEY || process.env.GEMINI_API_KEY || '').trim();
+  if (!key) {
+    loadEnvFiles();
+    key = String(process.env.XIQI_AI_KEY || process.env.GEMINI_API_KEY || '').trim();
+  }
+  return key;
+}
+
 async function getXiqiAIClient() {
-  const apiKey = String(process.env.XIQI_AI_KEY || '').trim();
+  const apiKey = resolveXiqiAiKey();
   if (!apiKey) {
     cachedXiqiAI = null;
     cachedXiqiAIKey = '';
@@ -57,7 +113,7 @@ async function getXiqiAIClient() {
       apiKey,
       httpOptions: {
         headers: {
-          'User-Agent': 'XIQI-OS/1.0'
+          'User-Agent': 'aistudio-build'
         }
       }
     });
@@ -502,11 +558,12 @@ app.use('/api', (req, res, next) => {
   }
   const isTrustedProxy = isLocalLoopbackRequest(req) || Boolean(process.env.K_SERVICE);
   const forwardedHost = isTrustedProxy ? req.headers['x-forwarded-host'] : '';
-  const expectedHost = String(forwardedHost || req.headers.host || '').split(',')[0].trim().toLowerCase();
+  const normalizeHost = h => String(h || '').split(',')[0].trim().toLowerCase().replace(/:(80|443)$/, '');
+  const expectedHost = normalizeHost(forwardedHost || req.headers.host);
   const origin = req.headers.origin;
   if (origin) {
     try {
-      const originHost = new URL(origin).host.toLowerCase();
+      const originHost = normalizeHost(new URL(origin).host);
       if (!expectedHost || originHost !== expectedHost) {
         return res.status(403).json({ error: 'Origem não autorizada para esta operação.' });
       }
@@ -515,7 +572,7 @@ app.use('/api', (req, res, next) => {
     }
   } else if (req.headers.referer) {
     try {
-      const refHost = new URL(req.headers.referer).host.toLowerCase();
+      const refHost = normalizeHost(new URL(req.headers.referer).host);
       if (!expectedHost || refHost !== expectedHost) {
         return res.status(403).json({ error: 'Referer não autorizado para esta operação.' });
       }
@@ -848,14 +905,20 @@ app.post('/api/store', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) => {
+app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 15), (req, res) => {
   const body = stripProtoPollution(req.body || {});
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
   const identifier = typeof body.identifier === 'string' ? body.identifier.trim().slice(0, 120) : '';
   const pin = typeof body.pin === 'string' ? body.pin : '';
 
-  if (!name || !identifier || !pin.trim() || pin.length < 4 || pin.length > 128) {
-    return res.status(400).json({ error: 'Preencha Nome, E-mail/Usuário e Senha/PIN (4 a 128 caracteres).' });
+  if (name.length < 2) {
+    return res.status(400).json({ error: 'Informe um Nome Completo válido (mínimo 2 caracteres).' });
+  }
+  if (identifier.length < 2) {
+    return res.status(400).json({ error: 'Informe um E-mail ou Usuário Corporativo válido (mínimo 2 caracteres).' });
+  }
+  if (!pin.trim() || pin.length < 4 || pin.length > 128) {
+    return res.status(400).json({ error: 'A Senha ou PIN deve ter entre 4 e 128 caracteres válidos.' });
   }
 
   const cur = readJson(PROFILES_PATH, {
@@ -869,8 +932,8 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
   if (cur.users.length >= 200) {
     return res.status(400).json({ error: 'Limite máximo de contas corporativas atingido.' });
   }
-  if (cur.users.some(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase())) {
-    return res.status(409).json({ error: 'Já existe um usuário com este identificador.' });
+  if (cur.users.some(u => String(u.identifier || '').trim().toLowerCase() === identifier.toLowerCase())) {
+    return res.status(409).json({ error: 'Já existe uma conta cadastrada com este e-mail/usuário.' });
   }
 
   const palette = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#0d9488', '#dc2626'];
@@ -927,7 +990,7 @@ app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 10), (req, res) 
   });
 });
 
-app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) => {
+app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 25), (req, res) => {
   const ipKey = 'user:' + (req.ip || 'local');
   if (isBlocked(ipKey)) {
     return res.status(429).json({ error: 'Muitas tentativas inválidas. Bloqueado por 10 minutos.' });
@@ -936,25 +999,39 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 20), (req, res) =
   const userIdParam = typeof body.userId === 'string' ? body.userId.trim().slice(0, 80) : '';
   const identifier = typeof body.identifier === 'string' ? body.identifier.trim().slice(0, 120) : '';
   const pin = typeof body.pin === 'string' ? body.pin : '';
-  if ((!identifier && !userIdParam) || !pin || pin.length > 128) {
-    return res.status(400).json({ error: 'Informe identificador e senha/PIN válidos.' });
+  if (!identifier && !userIdParam) {
+    return res.status(400).json({ error: 'Informe seu E-mail ou Usuário Corporativo.' });
+  }
+  if (!pin || pin.length > 128) {
+    return res.status(400).json({ error: 'Informe sua Senha ou PIN de acesso.' });
   }
 
   const cur = readJson(PROFILES_PATH, { users: [], guestSession: createDefaultGuestSession() });
   const users = Array.isArray(cur.users) ? cur.users : [];
-  const user = userIdParam
+  const normId = identifier.toLowerCase();
+  let user = userIdParam
     ? users.find(u => u.id === userIdParam)
-    : users.find(u => String(u.identifier || '').toLowerCase() === identifier.toLowerCase());
+    : users.find(u => String(u.identifier || '').trim().toLowerCase() === normId);
 
-  const acctKey = 'acct:' + (user ? user.id : (userIdParam || identifier.toLowerCase()));
+  if (!user && normId) {
+    const byName = users.filter(u => String(u.name || '').trim().toLowerCase() === normId);
+    if (byName.length === 1) user = byName[0];
+  }
+
+  const acctKey = 'acct:' + (user ? user.id : (userIdParam || normId));
   if (isBlocked(acctKey)) {
     return res.status(429).json({ error: 'Conta temporariamente bloqueada após múltiplas tentativas inválidas. Aguarde 10 minutos.' });
   }
 
-  if (!user || !verifyUserPin(user, pin)) {
+  if (!user) {
+    markFail(ipKey);
+    return res.status(401).json({ error: 'Conta não encontrada. Verifique o e-mail/usuário digitado ou cadastre uma nova conta.' });
+  }
+
+  if (!verifyUserPin(user, pin)) {
     markFail(ipKey);
     markFail(acctKey);
-    return res.status(401).json({ error: 'Credenciais inválidas.' });
+    return res.status(401).json({ error: 'Senha ou PIN incorreto para esta conta.' });
   }
 
   loginFails.delete(ipKey);
@@ -1198,10 +1275,16 @@ app.delete('/api/admin/users/:id', rateLimit('admin_api', 60 * 1000, 30), (req, 
 /* =====================================================================
    BUSCA WEB RESILIENTE (XIQI BUSCA / DUCKDUCKGO / BING + FALLBACK IA)
    ===================================================================== */
+const MODERN_DESKTOP_UA =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const SEARCH_HEADERS = {
-  'User-Agent': 'XIQI-OS/1.0 (XIQI Core x86_64; Corporacao Engecema)',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+  'User-Agent': MODERN_DESKTOP_UA,
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+  'Sec-CH-UA': '"Chromium";v="131", "Not_A Brand";v="24"',
+  'Sec-CH-UA-Mobile': '?0',
+  'Sec-CH-UA-Platform': '"Linux"',
+  'Upgrade-Insecure-Requests': '1'
 };
 
 function stripTags(html) {
@@ -1437,11 +1520,25 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
   <div class="wrap">
     <div class="head">
       <h2>Resultados para: ${escHtml(q)} <span class="badge">${escHtml(eng.label)}</span></h2>
-      <a class="res-ext-btn" href="${escHtml(eng.extUrl)}" target="_blank" rel="noopener noreferrer">Abrir no ${escHtml(eng.label)} ↗</a>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button type="button" id="xiqiSwitchAiBtn" class="res-ext-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;cursor:pointer">✨ Modo IA</button>
+        <a class="res-ext-btn" href="${escHtml(eng.extUrl)}" target="_blank" rel="noopener noreferrer">Abrir no ${escHtml(eng.label)} ↗</a>
+      </div>
     </div>
     ${cards}
   </div>
   <script>
+    var aiBtn = document.getElementById('xiqiSwitchAiBtn');
+    if (aiBtn) {
+      aiBtn.addEventListener('click', function() {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({
+            type: 'xiqi-open-ai',
+            query: ${safeJsonForScript(q)}
+          }, window.location.origin);
+        }
+      });
+    }
     document.querySelectorAll('a[data-xiqi-open="1"]').forEach(function(link) {
       link.addEventListener('click', function(e) {
         if (window.parent && window.parent !== window) {
@@ -1641,6 +1738,11 @@ async function callXiqiAiWithRetry(ai, params, maxRetries = 1) {
   throw lastErr;
 }
 
+app.get('/api/ai/status', (_req, res) => {
+  const configured = Boolean(resolveXiqiAiKey());
+  res.json({ ok: configured, configured });
+});
+
 app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
   try {
     const body = stripProtoPollution(req.body || {});
@@ -1651,7 +1753,7 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
     const ai = await getXiqiAIClient();
     if (!ai) {
       return res.status(503).json({
-        error: 'Chave XIQI_AI_KEY não configurada no servidor para o Modo XIQI AI.'
+        error: 'Chave XIQI_AI_KEY (ou GEMINI_API_KEY) não configurada no arquivo .env do servidor.'
       });
     }
 
@@ -1668,15 +1770,35 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
       parts: [{ text: prompt }]
     });
 
-    const response = await callXiqiAiWithRetry(ai, {
-      model: 'gemini-4-hydrogen',
-      contents,
-      config: {
-        systemInstruction:
-          'Você é a XIQI AI, assistente oficial do sistema operacional XIQI OS v1.0 (Corporação Engecema). Responda sempre em português do Brasil de forma clara, objetiva e precisa.',
-        tools: [{ googleSearch: {} }]
-      }
-    });
+    const systemInstruction =
+      'Você é a XIQI AI, assistente oficial do sistema operacional XIQI OS v1.0 (Corporação Engecema). Responda sempre em português do Brasil de forma clara, objetiva e precisa.';
+
+    let response;
+    try {
+      response = await callXiqiAiWithRetry(ai, {
+        model: 'gemini-4-hydrogen',
+        contents,
+        config: {
+          systemInstruction,
+          tools: [{ googleSearch: {} }]
+        }
+      });
+    } catch (toolErr) {
+      const toolMsg = String(toolErr?.message || '');
+      const toolStatus = Number(toolErr?.status) || 0;
+      const isKeyError =
+        toolStatus === 401 ||
+        toolStatus === 403 ||
+        toolMsg.includes('API_KEY_INVALID') ||
+        toolMsg.includes('PERMISSION_DENIED');
+      if (isKeyError) throw toolErr;
+      // Fallback sem grounding caso a ferramenta googleSearch não esteja habilitada para a chave atual
+      response = await callXiqiAiWithRetry(ai, {
+        model: 'gemini-4-hydrogen',
+        contents,
+        config: { systemInstruction }
+      });
+    }
 
     const answerText = String(response?.text || '').trim();
     if (!answerText) {
@@ -1744,7 +1866,9 @@ function isLocalLoopbackRequest(req) {
 }
 
 function canControlSystem(req) {
-  return isLocalLoopbackRequest(req) || Boolean(getAuthenticatedUserId(req)) || checkAdmin(req);
+  const clientIp = String(req.ip || (req.socket && req.socket.remoteAddress) || '').trim();
+  const isClientLoopback = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+  return isClientLoopback || Boolean(getAuthenticatedUserId(req)) || checkAdmin(req);
 }
 
 function execFileAsync(cmd, args, opts = {}) {
