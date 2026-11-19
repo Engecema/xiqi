@@ -2322,12 +2322,11 @@
           .then(function (r) { return r.json(); })
           .then(function (info) {
             if (!info || info.embeddable) return;
-            tab.useProxy = true;
-            tab.embedReason = info.reason || 'Site bloqueia incorporação direta';
-            saveStore(store);
-            var active = getActiveSession().tabs.find(function (t) { return t.id === getActiveSession().activeTabId; });
-            if (active && active.id === tab.id) {
-              renderWorkspace();
+            if (tab.externalOpenedFor !== tab.url) {
+              tab.externalOpenedFor = tab.url;
+              tab.useProxy = false;
+              saveStore(store);
+              window.open(tab.url, '_blank', 'noopener');
             }
           })
           .catch(function () {});
