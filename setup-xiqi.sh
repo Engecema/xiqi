@@ -499,6 +499,27 @@ EOF
     loadkeys br-abnt2 2>/dev/null || true
   fi
 
+  mkdir -p \
+    "${ROOT_PREFIX}/home/xiqi/.config/xfce4/xfconf/xfce-perchannel-xml" \
+    "${ROOT_PREFIX}/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/home/xiqi/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="mousewheel_rollup" type="bool" value="false"/>
+    <property name="button_layout" type="string" value="|HMC"/>
+    <property name="double_click_action" type="string" value="maximize"/>
+    <property name="use_compositing" type="bool" value="false"/>
+    <property name="theme" type="string" value="Default"/>
+  </property>
+</channel>
+EOF
+  cp -f "${ROOT_PREFIX}/home/xiqi/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml" \
+    "${ROOT_PREFIX}/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+  chmod 644 "${ROOT_PREFIX}/home/xiqi/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml" \
+    "${ROOT_PREFIX}/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+
   cat << 'EOF' > "${ROOT_PREFIX}/home/xiqi/.xinitrc"
 #!/bin/sh
 export HOME=/home/xiqi
@@ -539,8 +560,16 @@ pkill -f xfce4-power-manager 2>/dev/null || true
 pkill -f xscreensaver 2>/dev/null || true
 pkill -f light-locker 2>/dev/null || true
 
+# Impedir enrolamento (shade/rollup) de janela no xfwm4 e remover botão S
+if command -v xfconf-query >/dev/null 2>&1; then
+  xfconf-query -c xfwm4 -p /general/mousewheel_rollup -n -t bool -s false 2>/dev/null || xfconf-query -c xfwm4 -p /general/mousewheel_rollup -s false 2>/dev/null || true
+  xfconf-query -c xfwm4 -p /general/button_layout -n -t string -s "|HMC" 2>/dev/null || xfconf-query -c xfwm4 -p /general/button_layout -s "|HMC" 2>/dev/null || true
+  xfconf-query -c xfwm4 -p /general/double_click_action -n -t string -s "maximize" 2>/dev/null || xfconf-query -c xfwm4 -p /general/double_click_action -s "maximize" 2>/dev/null || true
+fi
+
 # Gerenciador de janelas mínimo xfwm4 (sem painéis, sem rodapés externos)
 xfwm4 --compositor=off >/dev/null 2>&1 &
+(sleep 1 && DISPLAY=:0 xsetroot -solid "#ffffff" >/dev/null 2>&1) &
 
 exec /usr/bin/python3 /opt/xiqi/app/xiqi-browser.py
 EOF
@@ -821,64 +850,162 @@ EOF
 
 configure_silent_boot_and_fsck() {
   ROOT_PREFIX="${1:-}"
-  QUIET_OPTS="quiet loglevel=0 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer consoleblank=0 acpi_sleep=nonvs nohz=off nohibernate"
+  QUIET_OPTS="quiet loglevel=0 console=tty3 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer consoleblank=0 acpi_sleep=nonvs nohz=off nohibernate"
 
   mkdir -p "${ROOT_PREFIX}/etc/conf.d" "${ROOT_PREFIX}/etc/default" "${ROOT_PREFIX}/boot"
 
   # Suprimir logs e barras de fsck na inicialização e no reinício
   cat << 'EOF' > "${ROOT_PREFIX}/etc/conf.d/fsck"
-fsck_args="-p -C0"
+fsck_args="-y -T -C 0"
 rc_fsck_quiet="YES"
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/conf.d/fsck"
 
-  # Forçar TIMEOUT 0 real, títulos XIQI OS e parâmetros silenciosos no gerenciador de boot e GRUB após branding-xiqi.sh
-  if [ -f "${ROOT_PREFIX}/etc/update-extlinux.conf" ]; then
-    sed -i 's|^timeout=.*|timeout=0|g' "${ROOT_PREFIX}/etc/update-extlinux.conf" 2>/dev/null || true
-    if grep -q '^default_kernel_opts=' "${ROOT_PREFIX}/etc/update-extlinux.conf"; then
-      sed -i "s|^default_kernel_opts=.*|default_kernel_opts=\"${QUIET_OPTS}\"|g" "${ROOT_PREFIX}/etc/update-extlinux.conf"
-    else
-      echo "default_kernel_opts=\"${QUIET_OPTS}\"" >> "${ROOT_PREFIX}/etc/update-extlinux.conf"
+  # Instalar e configurar GRUB 100% silencioso (substituindo extlinux/SYSLINUX)
+  resolve_root_partition() {
+    PREFIX_DIR="${1:-}"
+    MNT_POINT="${PREFIX_DIR:-/}"
+    SRC_DEV=""
+    if command -v findmnt >/dev/null 2>&1; then
+      SRC_DEV="$(findmnt -n -o SOURCE "${MNT_POINT}" 2>/dev/null || true)"
+    fi
+    if [ -z "${SRC_DEV}" ] && command -v df >/dev/null 2>&1; then
+      SRC_DEV="$(df -P "${MNT_POINT}" 2>/dev/null | awk 'NR==2{print $1}')"
+    fi
+    case "${SRC_DEV}" in
+      /dev/*) [ -b "${SRC_DEV}" ] && printf '%s\n' "${SRC_DEV}" && return 0 ;;
+    esac
+    return 1
+  }
+
+  resolve_parent_disk() {
+    PART_DEV="${1:-}"
+    [ -n "${PART_DEV}" ] || return 1
+    if command -v lsblk >/dev/null 2>&1; then
+      PK="$(lsblk -no PKNAME "${PART_DEV}" 2>/dev/null | head -n 1 || true)"
+      if [ -n "${PK}" ] && [ -b "/dev/${PK}" ]; then
+        printf '/dev/%s\n' "${PK}"
+        return 0
+      fi
+    fi
+    case "${PART_DEV}" in
+      /dev/nvme*p[0-9]*|/dev/mmcblk*p[0-9]*|/dev/loop*p[0-9]*)
+        DISK_CAND="$(printf '%s' "${PART_DEV}" | sed -E 's/p[0-9]+$//')"
+        ;;
+      *)
+        DISK_CAND="$(printf '%s' "${PART_DEV}" | sed -E 's/[0-9]+$//')"
+        ;;
+    esac
+    if [ -b "${DISK_CAND}" ]; then
+      printf '%s\n' "${DISK_CAND}"
+      return 0
+    fi
+    return 1
+  }
+
+  resolve_root_uuid() {
+    PREFIX_DIR="${1:-}"
+    PART_DEV="${2:-}"
+    UUID_VAL=""
+    if [ -n "${PART_DEV}" ] && [ -b "${PART_DEV}" ] && command -v blkid >/dev/null 2>&1; then
+      UUID_VAL="$(blkid -s UUID -o value "${PART_DEV}" 2>/dev/null || true)"
+    fi
+    if [ -z "${UUID_VAL}" ] && command -v findmnt >/dev/null 2>&1; then
+      UUID_VAL="$(findmnt -n -o UUID "${PREFIX_DIR:-/}" 2>/dev/null || true)"
+    fi
+    if [ -z "${UUID_VAL}" ] && [ -f "${PREFIX_DIR}/etc/fstab" ]; then
+      UUID_VAL="$(awk '$2 == "/" && $1 ~ /^UUID=/ { sub(/^UUID=/, "", $1); print $1; exit }' "${PREFIX_DIR}/etc/fstab" 2>/dev/null || true)"
+    fi
+    if [ -z "${UUID_VAL}" ] && [ -f "${PREFIX_DIR}/boot/extlinux.conf" ]; then
+      UUID_VAL="$(sed -n 's/.*root=UUID=\([^[:space:]]*\).*/\1/p' "${PREFIX_DIR}/boot/extlinux.conf" 2>/dev/null | head -n 1 || true)"
+    fi
+    printf '%s\n' "${UUID_VAL}"
+  }
+
+  sanitize_grub_cfg() {
+    CFG_PATH="${1:-}"
+    [ -f "${CFG_PATH}" ] || return 0
+    TMP_CFG="${CFG_PATH}.xiqi.tmp"
+    awk '
+      /^[[:space:]]*echo[[:space:]]+/ { next }
+      /^[[:space:]]*menuentry[[:space:]]+/ {
+        sub(/menuentry[[:space:]]+\047[^\047]*\047/, "menuentry \047XIQI OS v1.0 - Engecema\047")
+        sub(/menuentry[[:space:]]+"[^"]*"/, "menuentry \"XIQI OS v1.0 - Engecema\"")
+        print
+        next
+      }
+      /^[[:space:]]*submenu[[:space:]]+/ {
+        sub(/submenu[[:space:]]+\047[^\047]*\047/, "submenu \047XIQI OS v1.0 - Engecema\047")
+        sub(/submenu[[:space:]]+"[^"]*"/, "submenu \"XIQI OS v1.0 - Engecema\"")
+        print
+        next
+      }
+      {
+        gsub(/Alpine Linux|Alpine|SYSLINUX|extlinux|GNU\/Linux/, "XIQI OS")
+        gsub(/Loading Linux[^"\047]*/, "XIQI OS Core x86_64")
+        if ($0 ~ /^[[:space:]]*#/) { gsub(/Linux/, "XIQI OS") }
+        if ($0 ~ /^[[:space:]]*set[[:space:]]+timeout=/) { print "set timeout=0"; next }
+        if ($0 ~ /^[[:space:]]*set[[:space:]]+timeout_style=/) { print "set timeout_style=hidden"; next }
+        print
+      }
+    ' "${CFG_PATH}" > "${TMP_CFG}"
+    mv "${TMP_CFG}" "${CFG_PATH}"
+    chmod 644 "${CFG_PATH}"
+  }
+
+  verify_grub_default_entry() {
+    CFG_PATH="${1:-}"
+    REQ_UUID="${2:-}"
+    [ -s "${CFG_PATH}" ] || return 1
+    awk -v req_uuid="${REQ_UUID}" '
+      BEGIN { in_entry=0; idx=0; has_kern=0; has_initrd=0; has_uuid=0; }
+      /^[[:space:]]*menuentry[[:space:]]+/ {
+        idx++
+        if (idx == 1) { in_entry=1 }
+        next
+      }
+      in_entry && /^[[:space:]]*\}/ { in_entry=0; exit }
+      in_entry {
+        if ($0 ~ /vmlinuz-lts/) has_kern=1
+        if ($0 ~ /initramfs-lts/) has_initrd=1
+        if (req_uuid == "" || index($0, "root=UUID=" req_uuid) > 0) has_uuid=1
+      }
+      END {
+        if (idx >= 1 && has_kern == 1 && has_initrd == 1 && has_uuid == 1) exit 0
+        exit 1
+      }
+    ' "${CFG_PATH}"
+  }
+
+  ROOT_PART="$(resolve_root_partition "${ROOT_PREFIX}" || true)"
+  DISK_DEV="$(resolve_parent_disk "${ROOT_PART}" || true)"
+  ROOT_UUID="$(resolve_root_uuid "${ROOT_PREFIX}" "${ROOT_PART}")"
+  if [ -z "${DISK_DEV}" ] && [ -z "${ROOT_PREFIX}" ] && [ -b /dev/sda ]; then
+    DISK_DEV="/dev/sda"
+  fi
+
+  GRUB_TARGET_MODE="bios"
+  if [ -d /sys/firmware/efi ] && [ -d "${ROOT_PREFIX}/boot/efi" ]; then
+    GRUB_TARGET_MODE="uefi"
+  fi
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if command -v apk >/dev/null 2>&1; then
+      if [ "${GRUB_TARGET_MODE}" = "uefi" ] && [ ! -d /usr/lib/grub/x86_64-efi ]; then
+        apk add --no-cache grub grub-efi >/dev/null 2>&1 || true
+      elif [ ! -d /usr/lib/grub/i386-pc ] || ! command -v grub-install >/dev/null 2>&1; then
+        apk add --no-cache grub grub-bios >/dev/null 2>&1 || true
+      fi
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/apk" ]; then
+    if [ "${GRUB_TARGET_MODE}" = "uefi" ] && [ ! -d "${ROOT_PREFIX}/usr/lib/grub/x86_64-efi" ]; then
+      chroot "${ROOT_PREFIX}" apk add --no-cache grub grub-efi >/dev/null 2>&1 || true
+    elif [ ! -d "${ROOT_PREFIX}/usr/lib/grub/i386-pc" ] || [ ! -x "${ROOT_PREFIX}/usr/sbin/grub-install" ]; then
+      chroot "${ROOT_PREFIX}" apk add --no-cache grub grub-bios >/dev/null 2>&1 || true
     fi
   fi
 
-  if [ -z "${ROOT_PREFIX}" ] && command -v update-extlinux >/dev/null 2>&1 && [ -f /etc/update-extlinux.conf ]; then
-    update-extlinux >/dev/null 2>&1 || true
-  fi
-
-  if [ -f "${ROOT_PREFIX}/boot/extlinux.conf" ]; then
-    TMP_EXT_ZERO="${ROOT_PREFIX}/boot/extlinux.conf.zero"
-    awk -v qopts="${QUIET_OPTS}" '
-      BEGIN { has_title=0; has_hidden=0; has_silent=0; has_prompt=0; has_timeout=0; has_totaltimeout=0; }
-      /^MENU TITLE / { print "MENU TITLE XIQI OS v1.0 - Engecema"; has_title=1; next; }
-      /^MENU LABEL / { print "MENU LABEL XIQI OS Core x86_64"; next; }
-      /^SAY / { next; }
-      /^MENU AUTOBOOT/ { next; }
-      /^UI / { next; }
-      /^TIMEOUT / { print "TIMEOUT 0"; has_timeout=1; next; }
-      /^TOTALTIMEOUT / { print "TOTALTIMEOUT 0"; has_totaltimeout=1; next; }
-      /^PROMPT / { print "PROMPT 0"; has_prompt=1; next; }
-      /^MENU HIDDEN/ { print "MENU HIDDEN"; has_hidden=1; next; }
-      /^MENU SILENT/ { print "MENU SILENT"; has_silent=1; next; }
-      /^[[:space:]]*APPEND / {
-        line=$0
-        gsub(/[[:space:]]+(quiet|loglevel=[0-9]+|vt\.global_cursor_default=[0-9]+|rd\.udev\.log_level=[0-9]+|systemd\.show_status=[a-z]+|rd\.systemd\.show_status=[a-z]+|fsck\.mode=[a-z]+|fastboot|fbcon=nodefer|consoleblank=[0-9]+|acpi_sleep=[^[:space:]]+|nohz=[^[:space:]]+|nohibernate|debug|verbose)/, "", line)
-        print line " " qopts
-        next
-      }
-      { print }
-      END {
-        if (!has_prompt) print "PROMPT 0"
-        if (!has_timeout) print "TIMEOUT 0"
-        if (!has_totaltimeout) print "TOTALTIMEOUT 0"
-        if (!has_title) print "MENU TITLE XIQI OS v1.0 - Engecema"
-        if (!has_hidden) print "MENU HIDDEN"
-        if (!has_silent) print "MENU SILENT"
-      }
-    ' "${ROOT_PREFIX}/boot/extlinux.conf" > "${TMP_EXT_ZERO}"
-    mv "${TMP_EXT_ZERO}" "${ROOT_PREFIX}/boot/extlinux.conf"
-    chmod 644 "${ROOT_PREFIX}/boot/extlinux.conf"
-  fi
+  mkdir -p "${ROOT_PREFIX}/boot/grub"
 
   cat << EOF > "${ROOT_PREFIX}/etc/default/grub"
 GRUB_DEFAULT=0
@@ -887,24 +1014,134 @@ GRUB_RECORDFAIL_TIMEOUT=0
 GRUB_TIMEOUT_STYLE=hidden
 GRUB_HIDDEN_TIMEOUT=0
 GRUB_HIDDEN_TIMEOUT_QUIET=true
-GRUB_DISTRIBUTOR="XIQI OS v1.0 - Engecema"
+GRUB_DISTRIBUTOR="XIQI OS"
 GRUB_CMDLINE_LINUX_DEFAULT="${QUIET_OPTS}"
 GRUB_CMDLINE_LINUX="${QUIET_OPTS}"
+GRUB_DISABLE_OS_PROBER=true
+GRUB_DISABLE_RECOVERY=true
+GRUB_TERMINAL_OUTPUT="console"
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/default/grub"
 
-  if [ -z "${ROOT_PREFIX}" ]; then
-    if command -v update-grub >/dev/null 2>&1; then
-      update-grub >/dev/null 2>&1 || true
-    elif command -v grub-mkconfig >/dev/null 2>&1 && [ -d /boot/grub ]; then
-      grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+  MOUNTED_DEV_S="false"
+  MOUNTED_PROC_S="false"
+  MOUNTED_SYS_S="false"
+  cleanup_silent_chroot_mounts() {
+    if [ "${MOUNTED_SYS_S}" = "true" ]; then umount "${ROOT_PREFIX}/sys" 2>/dev/null || true; fi
+    if [ "${MOUNTED_PROC_S}" = "true" ]; then umount "${ROOT_PREFIX}/proc" 2>/dev/null || true; fi
+    if [ "${MOUNTED_DEV_S}" = "true" ]; then umount "${ROOT_PREFIX}/dev" 2>/dev/null || true; fi
+  }
+
+  if [ -n "${ROOT_PREFIX}" ]; then
+    if [ -d "${ROOT_PREFIX}/dev" ] && [ ! -e "${ROOT_PREFIX}/dev/null" ]; then
+      mount --bind /dev "${ROOT_PREFIX}/dev" 2>/dev/null && MOUNTED_DEV_S="true" || true
     fi
-  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ] && [ -d "${ROOT_PREFIX}/boot/grub" ]; then
-    chroot "${ROOT_PREFIX}" sh -c 'if command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1 || true; elif command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true; fi' || true
+    if [ -d "${ROOT_PREFIX}/proc" ] && [ ! -e "${ROOT_PREFIX}/proc/cmdline" ]; then
+      mount --bind /proc "${ROOT_PREFIX}/proc" 2>/dev/null && MOUNTED_PROC_S="true" || true
+    fi
+    if [ -d "${ROOT_PREFIX}/sys" ] && [ ! -d "${ROOT_PREFIX}/sys/kernel" ]; then
+      mount --bind /sys "${ROOT_PREFIX}/sys" 2>/dev/null && MOUNTED_SYS_S="true" || true
+    fi
   fi
 
-  if [ -f "${ROOT_PREFIX}/boot/grub/grub.cfg" ]; then
-    sed -i "s|menuentry '[^']*'|menuentry 'XIQI OS v1.0 - Engecema'|g; s|menuentry \"[^\"]*\"|menuentry \"XIQI OS v1.0 - Engecema\"|g; s|Loading Linux[^'\"]*|Carregando XIQI OS Core x86_64|g; s|Alpine Linux|XIQI OS v1.0 - Engecema|g; s|set timeout=[0-9-]*|set timeout=0|g; s|set timeout_style=[^[:space:]]*|set timeout_style=hidden|g" "${ROOT_PREFIX}/boot/grub/grub.cfg" 2>/dev/null || true
+  GRUB_INSTALL_OK="false"
+  if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ]; then
+    if [ -z "${ROOT_PREFIX}" ] && command -v grub-install >/dev/null 2>&1; then
+      if [ "${GRUB_TARGET_MODE}" = "uefi" ]; then
+        if grub-install --target=x86_64-efi --efi-directory=/boot/efi --boot-directory=/boot --removable "${DISK_DEV}" >/dev/null 2>&1; then
+          GRUB_INSTALL_OK="true"
+        fi
+      else
+        if grub-install --target=i386-pc --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
+          GRUB_INSTALL_OK="true"
+        fi
+      fi
+    elif [ -n "${ROOT_PREFIX}" ]; then
+      if command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/usr/sbin/grub-install" ]; then
+        if [ "${GRUB_TARGET_MODE}" = "uefi" ]; then
+          if chroot "${ROOT_PREFIX}" grub-install --target=x86_64-efi --efi-directory=/boot/efi --boot-directory=/boot --removable "${DISK_DEV}" >/dev/null 2>&1; then
+            GRUB_INSTALL_OK="true"
+          fi
+        else
+          if chroot "${ROOT_PREFIX}" grub-install --target=i386-pc --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
+            GRUB_INSTALL_OK="true"
+          fi
+        fi
+      fi
+      if [ "${GRUB_INSTALL_OK}" != "true" ] && command -v grub-install >/dev/null 2>&1; then
+        if [ "${GRUB_TARGET_MODE}" = "uefi" ]; then
+          if grub-install --target=x86_64-efi --efi-directory="${ROOT_PREFIX}/boot/efi" --boot-directory="${ROOT_PREFIX}/boot" --removable "${DISK_DEV}" >/dev/null 2>&1; then
+            GRUB_INSTALL_OK="true"
+          fi
+        else
+          if grub-install --target=i386-pc --boot-directory="${ROOT_PREFIX}/boot" "${DISK_DEV}" >/dev/null 2>&1; then
+            GRUB_INSTALL_OK="true"
+          fi
+        fi
+      fi
+    fi
+  fi
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if command -v grub-mkconfig >/dev/null 2>&1; then
+      grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    elif command -v update-grub >/dev/null 2>&1; then
+      update-grub >/dev/null 2>&1 || true
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+    chroot "${ROOT_PREFIX}" sh -c 'if command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true; elif command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1 || true; fi' || true
+  fi
+
+  cleanup_silent_chroot_mounts
+
+  GRUB_CFG="${ROOT_PREFIX}/boot/grub/grub.cfg"
+  BOOT_PREFIX="/boot"
+  BOOT_SEARCH_UUID="${ROOT_UUID}"
+  BOOT_PART="$(resolve_root_partition "${ROOT_PREFIX}/boot" || true)"
+  if [ -n "${BOOT_PART}" ] && [ -n "${ROOT_PART}" ] && [ "${BOOT_PART}" != "${ROOT_PART}" ]; then
+    BOOT_PREFIX=""
+    if command -v blkid >/dev/null 2>&1; then
+      BOOT_SEARCH_UUID="$(blkid -s UUID -o value "${BOOT_PART}" 2>/dev/null || printf '%s' "${ROOT_UUID}")"
+    fi
+  fi
+
+  if [ -f "${ROOT_PREFIX}/boot/vmlinuz-lts" ] && [ -f "${ROOT_PREFIX}/boot/initramfs-lts" ] && [ -n "${ROOT_UUID}" ]; then
+    if ! verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
+      cat << EOF > "${GRUB_CFG}"
+set default="0"
+set timeout=0
+set timeout_style=hidden
+insmod part_msdos
+insmod part_gpt
+insmod ext2
+search --no-floppy --fs-uuid --set=root ${BOOT_SEARCH_UUID}
+
+menuentry 'XIQI OS v1.0 - Engecema' {
+  linux ${BOOT_PREFIX}/vmlinuz-lts root=UUID=${ROOT_UUID} ro ${QUIET_OPTS}
+  initrd ${BOOT_PREFIX}/initramfs-lts
+}
+EOF
+      chmod 644 "${GRUB_CFG}"
+    fi
+  fi
+
+  sanitize_grub_cfg "${GRUB_CFG}"
+
+  GRUB_CORE_OK="false"
+  if [ -f "${ROOT_PREFIX}/boot/grub/i386-pc/core.img" ] || [ -f "${ROOT_PREFIX}/boot/grub/x86_64-efi/core.efi" ] || [ -f "${ROOT_PREFIX}/boot/grub/x86_64-efi/grub.efi" ] || [ -f "${ROOT_PREFIX}/boot/efi/EFI/BOOT/BOOTX64.EFI" ]; then
+    GRUB_CORE_OK="true"
+  fi
+  if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ] && [ "${GRUB_INSTALL_OK}" != "true" ]; then
+    GRUB_CORE_OK="false"
+  fi
+
+  if [ "${GRUB_CORE_OK}" = "true" ] && verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
+    for ext_res in "${ROOT_PREFIX}/boot/ldlinux.sys" "${ROOT_PREFIX}/boot/ldlinux.c32" "${ROOT_PREFIX}/boot/extlinux.conf" "${ROOT_PREFIX}/etc/update-extlinux.conf"; do
+      if [ -e "${ext_res}" ]; then
+        chattr -i "${ext_res}" 2>/dev/null || true
+        rm -f "${ext_res}"
+      fi
+    done
   fi
 }
 
@@ -1606,33 +1843,45 @@ EOF
 
   install_xiqi_stack "${MNT_DIR}"
 
-  if [ -f "${MNT_DIR}/boot/extlinux.conf" ] && [ -n "${UUID_ROOT}" ]; then
-    sed -i "s|root=UUID=[^[:space:]]*|root=UUID=${UUID_ROOT}|g" "${MNT_DIR}/boot/extlinux.conf" 2>/dev/null || true
-  fi
   if [ -f "${MNT_DIR}/boot/grub/grub.cfg" ] && [ -n "${UUID_ROOT}" ]; then
     sed -i "s|root=UUID=[^[:space:]]*|root=UUID=${UUID_ROOT}|g" "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null || true
   fi
 
+  DISK_GRUB_OK="false"
   if [ "${BOOT_MODE}" = "uefi" ]; then
-    if command -v grub-install >/dev/null 2>&1; then
-      grub-install --target=x86_64-efi --efi-directory="${MNT_DIR}/boot/efi" --boot-directory="${MNT_DIR}/boot" --removable "${TARGET_DISK}" || true
-    fi
-  else
-    INSTALLED_BOOT="false"
-    if command -v extlinux >/dev/null 2>&1 && [ -f "${MNT_DIR}/boot/extlinux.conf" ]; then
-      for mbr_cand in /usr/share/syslinux/mbr.bin /usr/lib/syslinux/mbr/mbr.bin /usr/lib/EXTLINUX/mbr.bin; do
-        if [ -f "${mbr_cand}" ]; then
-          dd if="${mbr_cand}" of="${TARGET_DISK}" bs=440 count=1 conv=notrunc 2>/dev/null || true
-          break
-        fi
-      done
-      if extlinux --install "${MNT_DIR}/boot"; then
-        INSTALLED_BOOT="true"
+    if command -v chroot >/dev/null 2>&1 && [ -x "${MNT_DIR}/usr/sbin/grub-install" ]; then
+      if chroot "${MNT_DIR}" grub-install --target=x86_64-efi --efi-directory=/boot/efi --boot-directory=/boot --removable "${TARGET_DISK}" >/dev/null 2>&1; then
+        DISK_GRUB_OK="true"
       fi
     fi
-    if [ "${INSTALLED_BOOT}" != "true" ] && command -v grub-install >/dev/null 2>&1; then
-      grub-install --target=i386-pc --boot-directory="${MNT_DIR}/boot" "${TARGET_DISK}" || true
+    if [ "${DISK_GRUB_OK}" != "true" ] && command -v grub-install >/dev/null 2>&1; then
+      if grub-install --target=x86_64-efi --efi-directory="${MNT_DIR}/boot/efi" --boot-directory="${MNT_DIR}/boot" --removable "${TARGET_DISK}" >/dev/null 2>&1; then
+        DISK_GRUB_OK="true"
+      fi
     fi
+  else
+    if command -v chroot >/dev/null 2>&1 && [ -x "${MNT_DIR}/usr/sbin/grub-install" ]; then
+      if chroot "${MNT_DIR}" grub-install --target=i386-pc --boot-directory=/boot "${TARGET_DISK}" >/dev/null 2>&1; then
+        DISK_GRUB_OK="true"
+      fi
+    fi
+    if [ "${DISK_GRUB_OK}" != "true" ] && command -v grub-install >/dev/null 2>&1; then
+      if grub-install --target=i386-pc --boot-directory="${MNT_DIR}/boot" "${TARGET_DISK}" >/dev/null 2>&1; then
+        DISK_GRUB_OK="true"
+      fi
+    fi
+  fi
+
+  if [ "${DISK_GRUB_OK}" = "true" ] && [ -s "${MNT_DIR}/boot/grub/grub.cfg" ] && \
+     grep -q 'vmlinuz-lts' "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null && \
+     grep -q 'initramfs-lts' "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null && \
+     grep -q "root=UUID=${UUID_ROOT}" "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null; then
+    for ext_res in "${MNT_DIR}/boot/ldlinux.sys" "${MNT_DIR}/boot/ldlinux.c32" "${MNT_DIR}/boot/extlinux.conf" "${MNT_DIR}/etc/update-extlinux.conf"; do
+      if [ -e "${ext_res}" ]; then
+        chattr -i "${ext_res}" 2>/dev/null || true
+        rm -f "${ext_res}"
+      fi
+    done
   fi
 
   sync

@@ -30,7 +30,7 @@ MODERN_DESKTOP_UA = (
 )
 
 URL_PATTERN = re.compile(
-    r'^(https?://\S+|localhost(:\d+)?(/.*)?|xiqios(\.local)?(:\d+)?(/.*)?|[a-z0-9-]+:\d+(/.*)?|[a-z0-9-]+(\.[a-z0-9-]+)+([/:?#].*)?)$',
+    r'^(https?://\S+|localhost(:\d+)?([/?#]\S*)?|xiqios(\.local)?(:\d+)?([/?#]\S*)?|[a-z0-9-]+:\d+([/?#]\S*)?|[^\s./]+(\.[^\s./]+)+([:/?#]\S*)?)$',
     re.IGNORECASE,
 )
 
@@ -266,6 +266,7 @@ class XiqiBrowser(Gtk.Window):
             )
             ctx = WebKit2.WebContext.new_with_website_data_manager(data_mgr)
             cm = ctx.get_cookie_manager()
+            cm.set_accept_policy(WebKit2.CookieAcceptPolicy.ALWAYS)
             cm.set_persistent_storage(
                 os.path.join(base_data, "cookies.sqlite"),
                 WebKit2.CookiePersistentStorage.SQLITE,
@@ -404,9 +405,12 @@ class XiqiBrowser(Gtk.Window):
         st.set_javascript_can_open_windows_automatically(True)
         st.set_enable_html5_local_storage(True)
         st.set_enable_html5_database(True)
-        st.set_enable_webgl(False)
-        st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.NEVER)
+        st.set_enable_webgl(True)
+        st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.ON_DEMAND)
         for attr, val in (
+            ("set_enable_accelerated_2d_canvas", True),
+            ("set_enable_javascript_markup", True),
+            ("set_enable_mediasource", True),
             ("set_allow_modal_dialogs", True),
             ("set_javascript_can_access_clipboard", True),
             ("set_enable_page_cache", True),
@@ -438,10 +442,14 @@ class XiqiBrowser(Gtk.Window):
         ):
             nav = decision.get_navigation_action()
             req = nav.get_request() if nav else None
-            uri = req.get_uri() if req else ""
-            if uri and not re.match(r'^(https?://|about:blank$|blob:)', uri, re.IGNORECASE):
-                decision.ignore()
+            uri = (req.get_uri() if req else "") or ""
+            if not uri:
+                return False
+            if re.match(r'^(https?://|about:blank$|blob:)', uri, re.IGNORECASE):
+                decision.use()
                 return True
+            decision.ignore()
+            return True
         return False
 
     def on_load_failed(self, webview, load_event, failing_uri, error):
@@ -476,6 +484,7 @@ class XiqiBrowser(Gtk.Window):
         tb.show_all()
         wv.connect("notify::title", lambda v, p, l: l.set_text((v.get_title() or "Nova Aba")[:24]), lbl)
         wv.connect("notify::uri", lambda v, p: self.update_address_bar(v.get_uri() or "") if v == self.current_webview() else None)
+        wv.connect("load-changed", lambda v, ev: self.update_address_bar(v.get_uri() or "") if v == self.current_webview() else None)
         wv.connect("create", self.on_create_window)
         idx = self.notebook.append_page(wv, tb)
         wv.show()
@@ -487,11 +496,7 @@ class XiqiBrowser(Gtk.Window):
         return wv
 
     def on_create_window(self, webview, navigation_action):
-        req = navigation_action.get_request() if navigation_action else None
-        uri = req.get_uri() if req else None
-        new_wv = self.add_tab(None, "Nova Aba", related=webview)
-        if new_wv is not None and uri and re.match(r'^https?://', uri, re.IGNORECASE):
-            GLib.idle_add(lambda: new_wv.load_uri(uri) and False)
+        new_wv = self.add_tab(None, "Carregando...", related=webview)
         return new_wv
 
     def close_tab(self, btn, wv):
@@ -506,15 +511,19 @@ class XiqiBrowser(Gtk.Window):
         if re.match(r'^(javascript|data|vbscript|file):', t, re.IGNORECASE):
             return
         if " " not in t and URL_PATTERN.match(t):
-            if t.startswith(("http://", "https://")):
+            if re.match(r'^https?://', t, re.IGNORECASE):
                 url = t
-            elif re.match(r'^(localhost|127\.0\.0\.1|10\.|192\.168\.|[a-z0-9-]+:\d+)', t, re.IGNORECASE):
+            elif re.match(r'^(?:localhost(?::\d+)?|127\.0\.0\.1(?::\d+)?|10\.\d+\.\d+\.\d+(?::\d+)?|192\.168\.\d+\.\d+(?::\d+)?|[a-z0-9-]+:\d+)(?:[/:?#]|$)', t, re.IGNORECASE):
                 url = "http://" + t
             else:
                 url = "https://" + t
         else:
             url = BASE_URL + "/api/search?engine=xiqi&q=" + urllib.parse.quote_plus(t)
-        self.safe_load(url)
+        wv = self.current_webview()
+        if wv is not None:
+            wv.load_uri(url)
+        else:
+            self.add_tab(url, "Carregando...")
 
     def on_switch_page(self, nb, page, num):
         self.update_address_bar(page.get_uri() or "")
