@@ -332,6 +332,60 @@ case "${1:-status}" in
       exit 1
     fi
     ;;
+  power-status|diag|energia)
+    echo "=== Diagnóstico de Energia e Vídeo — XIQI OS ==="
+    PWR_OK="sim"
+    if [ -r /sys/power/state ]; then
+      echo "Estados de energia do kernel (/sys/power/state): $(cat /sys/power/state 2>/dev/null || echo indisponível)"
+    fi
+    if [ -r /sys/power/mem_sleep ]; then
+      echo "Modo mem_sleep (/sys/power/mem_sleep): $(cat /sys/power/mem_sleep 2>/dev/null || echo indisponível)"
+    fi
+    if [ -r /sys/module/kernel/parameters/consoleblank ]; then
+      CB_VAL="$(cat /sys/module/kernel/parameters/consoleblank 2>/dev/null || echo '?')"
+      echo "Console blank timer (segundos): ${CB_VAL}"
+      if [ "${CB_VAL}" != "0" ]; then PWR_OK="não"; fi
+    fi
+    if [ -r /proc/cmdline ]; then
+      echo "Parâmetros de boot (/proc/cmdline): $(cat /proc/cmdline 2>/dev/null)"
+    fi
+    if [ -f /etc/X11/xorg.conf.d/10-no-dpms.conf ]; then
+      echo "Xorg 10-no-dpms.conf: PRESENTE"
+    else
+      echo "Xorg 10-no-dpms.conf: AUSENTE"
+      PWR_OK="não"
+    fi
+    if [ -L /etc/systemd/system/suspend.target ] && [ "$(readlink /etc/systemd/system/suspend.target 2>/dev/null)" = "/dev/null" ]; then
+      echo "Systemd sleep/suspend/hibernate targets: BLOQUEADOS (/dev/null)"
+    fi
+    if [ -f /etc/systemd/sleep.conf.d/99-xiqi-no-sleep.conf ] || [ -f /etc/elogind/sleep.conf.d/99-xiqi-no-sleep.conf ]; then
+      echo "Política sleep/logind (AllowSuspend=no, AllowHibernation=no): ATIVA"
+    fi
+    if [ -f /etc/acpi/events/xiqi-ignore-sleep ]; then
+      echo "Eventos ACPI sleep/lid/hibernate: BLOQUEADOS"
+    fi
+    if command -v xset >/dev/null 2>&1; then
+      DISP="${DISPLAY:-:0}"
+      XAUTH="${XAUTHORITY:-/home/xiqi/.Xauthority}"
+      echo "--- Saída xset -q (DISPLAY=${DISP}) ---"
+      if [ -f "${XAUTH}" ]; then
+        XSET_OUT="$(DISPLAY="${DISP}" XAUTHORITY="${XAUTH}" xset -q 2>&1 || true)"
+      else
+        XSET_OUT="$(DISPLAY="${DISP}" xset -q 2>&1 || true)"
+      fi
+      printf '%s\n' "${XSET_OUT}" | grep -E "timeout:|prefer blanking:|DPMS is|Standby:|Suspend:|Off:" || printf '%s\n' "${XSET_OUT}"
+      if printf '%s\n' "${XSET_OUT}" | grep -q "DPMS is Enabled"; then
+        PWR_OK="não"
+      fi
+    else
+      echo "Utilitário xset não encontrado neste ambiente."
+    fi
+    if [ "${PWR_OK}" = "sim" ]; then
+      echo "RESULTADO: Suspensão, hibernação e temporizador de apagamento de tela 100% DESATIVADOS."
+    else
+      echo "RESULTADO: Atenção — execute 'sh setup-xiqi.sh --local' ou reinicie para aplicar todas as travas de energia."
+    fi
+    ;;
   update)
     cd "${XIQI_APP}"
     git -c safe.directory="${XIQI_APP}" fetch origin main
@@ -346,7 +400,7 @@ case "${1:-status}" in
     exec /sbin/poweroff 2>/dev/null || exec poweroff
     ;;
   *)
-    echo "Uso: xiqictl {start|stop|restart|status|update|reboot|shutdown}"
+    echo "Uso: xiqictl {start|stop|restart|status|power-status|update|reboot|shutdown}"
     exit 1
     ;;
 esac
@@ -393,7 +447,16 @@ BACKSPACE="guess"
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/default/keyboard"
 
-  cat << 'EOF' > "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-xiqi-video.conf"
+  rm -f "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-xiqi-video.conf" 2>/dev/null || true
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-no-dpms.conf"
+Section "ServerLayout"
+  Identifier "XIQILayout"
+  Option "BlankTime" "0"
+  Option "StandbyTime" "0"
+  Option "SuspendTime" "0"
+  Option "OffTime" "0"
+EndSection
+
 Section "ServerFlags"
   Option "BlankTime" "0"
   Option "StandbyTime" "0"
@@ -406,8 +469,12 @@ Section "Monitor"
   Identifier "DefaultMonitor"
   Option "DPMS" "false"
 EndSection
+
+Section "Extensions"
+  Option "DPMS" "Disable"
+EndSection
 EOF
-  chmod 644 "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-xiqi-video.conf"
+  chmod 644 "${ROOT_PREFIX}/etc/X11/xorg.conf.d/10-no-dpms.conf"
 
   cat << 'EOF' > "${XIQI_BASE}/bin/xiqi-keyboard"
 #!/bin/sh
@@ -449,10 +516,13 @@ export WEBKIT_FORCE_SANDBOX=0
 export LIBGL_ALWAYS_SOFTWARE=1
 
 if command -v setterm >/dev/null 2>&1; then
-  setterm -blank 0 -powerdown 0 2>/dev/null || true
+  setterm -blank 0 -powerdown 0 -powersave off 2>/dev/null || true
 fi
 if command -v xset >/dev/null 2>&1; then
-  xset s off -dpms s noblank 2>/dev/null || true
+  xset s off 2>/dev/null || true
+  xset -dpms 2>/dev/null || true
+  xset s noblank 2>/dev/null || true
+  xset s 0 0 2>/dev/null || true
 fi
 if command -v xrandr >/dev/null 2>&1; then
   xrandr --auto 2>/dev/null || true
@@ -463,6 +533,11 @@ fi
 if command -v setxkbmap >/dev/null 2>&1; then
   setxkbmap -model abnt2 -layout br 2>/dev/null || setxkbmap br 2>/dev/null || true
 fi
+
+# Encerrar eventuais daemons externos de economia de energia/proteção de tela
+pkill -f xfce4-power-manager 2>/dev/null || true
+pkill -f xscreensaver 2>/dev/null || true
+pkill -f light-locker 2>/dev/null || true
 
 # Gerenciador de janelas mínimo xfwm4 (sem painéis, sem rodapés externos)
 xfwm4 --compositor=off >/dev/null 2>&1 &
@@ -636,7 +711,7 @@ start() {
     --env XIQI_FULLSCREEN=1 \
     --stdout /opt/xiqi/logs/xiqi-display.log \
     --stderr /opt/xiqi/logs/xiqi-display.log \
-    --exec /bin/sh -- -c 'exec /usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp'
+    --exec /bin/sh -- -c 'exec /usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp -s 0 -dpms'
   eend $?
 }
 
@@ -710,7 +785,7 @@ Environment=LIBGL_ALWAYS_SOFTWARE=1
 Environment=XIQI_URL=http://127.0.0.1:3000
 Environment=XIQI_FULLSCREEN=1
 ExecStartPre=-/bin/sh -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; command -v chvt >/dev/null 2>&1 && chvt 7 || true'
-ExecStart=/usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp
+ExecStart=/usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp -s 0 -dpms
 Restart=always
 RestartSec=2
 
@@ -739,13 +814,14 @@ EOF
   fi
 
   configure_silent_boot_and_fsck "${ROOT_PREFIX}"
+  configure_anti_suspend_and_power_lock "${ROOT_PREFIX}"
   configure_https_reverse_proxy "${ROOT_PREFIX}"
   configure_fast_network_and_ntp "${ROOT_PREFIX}"
 }
 
 configure_silent_boot_and_fsck() {
   ROOT_PREFIX="${1:-}"
-  QUIET_OPTS="quiet loglevel=0 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer"
+  QUIET_OPTS="quiet loglevel=0 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer consoleblank=0 acpi_sleep=nonvs nohz=off nohibernate"
 
   mkdir -p "${ROOT_PREFIX}/etc/conf.d" "${ROOT_PREFIX}/etc/default" "${ROOT_PREFIX}/boot"
 
@@ -756,7 +832,7 @@ rc_fsck_quiet="YES"
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/conf.d/fsck"
 
-  # Forçar TIMEOUT 0 real e parâmetros silenciosos no extlinux e GRUB após branding-xiqi.sh
+  # Forçar TIMEOUT 0 real, títulos XIQI OS e parâmetros silenciosos no gerenciador de boot e GRUB após branding-xiqi.sh
   if [ -f "${ROOT_PREFIX}/etc/update-extlinux.conf" ]; then
     sed -i 's|^timeout=.*|timeout=0|g' "${ROOT_PREFIX}/etc/update-extlinux.conf" 2>/dev/null || true
     if grep -q '^default_kernel_opts=' "${ROOT_PREFIX}/etc/update-extlinux.conf"; then
@@ -766,26 +842,42 @@ EOF
     fi
   fi
 
+  if [ -z "${ROOT_PREFIX}" ] && command -v update-extlinux >/dev/null 2>&1 && [ -f /etc/update-extlinux.conf ]; then
+    update-extlinux >/dev/null 2>&1 || true
+  fi
+
   if [ -f "${ROOT_PREFIX}/boot/extlinux.conf" ]; then
     TMP_EXT_ZERO="${ROOT_PREFIX}/boot/extlinux.conf.zero"
     awk -v qopts="${QUIET_OPTS}" '
-      /^TIMEOUT / { print "TIMEOUT 0"; next; }
-      /^TOTALTIMEOUT / { print "TOTALTIMEOUT 0"; next; }
-      /^PROMPT / { print "PROMPT 0"; next; }
+      BEGIN { has_title=0; has_hidden=0; has_silent=0; has_prompt=0; has_timeout=0; has_totaltimeout=0; }
+      /^MENU TITLE / { print "MENU TITLE XIQI OS v1.0 - Engecema"; has_title=1; next; }
+      /^MENU LABEL / { print "MENU LABEL XIQI OS Core x86_64"; next; }
+      /^SAY / { next; }
+      /^MENU AUTOBOOT/ { next; }
+      /^UI / { next; }
+      /^TIMEOUT / { print "TIMEOUT 0"; has_timeout=1; next; }
+      /^TOTALTIMEOUT / { print "TOTALTIMEOUT 0"; has_totaltimeout=1; next; }
+      /^PROMPT / { print "PROMPT 0"; has_prompt=1; next; }
+      /^MENU HIDDEN/ { print "MENU HIDDEN"; has_hidden=1; next; }
+      /^MENU SILENT/ { print "MENU SILENT"; has_silent=1; next; }
       /^[[:space:]]*APPEND / {
         line=$0
-        gsub(/[[:space:]]+(quiet|loglevel=[0-9]+|vt\.global_cursor_default=[0-9]+|rd\.udev\.log_level=[0-9]+|systemd\.show_status=[a-z]+|rd\.systemd\.show_status=[a-z]+|fsck\.mode=[a-z]+|fastboot|fbcon=nodefer|debug|verbose)/, "", line)
+        gsub(/[[:space:]]+(quiet|loglevel=[0-9]+|vt\.global_cursor_default=[0-9]+|rd\.udev\.log_level=[0-9]+|systemd\.show_status=[a-z]+|rd\.systemd\.show_status=[a-z]+|fsck\.mode=[a-z]+|fastboot|fbcon=nodefer|consoleblank=[0-9]+|acpi_sleep=[^[:space:]]+|nohz=[^[:space:]]+|nohibernate|debug|verbose)/, "", line)
         print line " " qopts
         next
       }
       { print }
+      END {
+        if (!has_prompt) print "PROMPT 0"
+        if (!has_timeout) print "TIMEOUT 0"
+        if (!has_totaltimeout) print "TOTALTIMEOUT 0"
+        if (!has_title) print "MENU TITLE XIQI OS v1.0 - Engecema"
+        if (!has_hidden) print "MENU HIDDEN"
+        if (!has_silent) print "MENU SILENT"
+      }
     ' "${ROOT_PREFIX}/boot/extlinux.conf" > "${TMP_EXT_ZERO}"
     mv "${TMP_EXT_ZERO}" "${ROOT_PREFIX}/boot/extlinux.conf"
     chmod 644 "${ROOT_PREFIX}/boot/extlinux.conf"
-  fi
-
-  if [ -z "${ROOT_PREFIX}" ] && command -v update-extlinux >/dev/null 2>&1 && [ -f /etc/update-extlinux.conf ]; then
-    update-extlinux >/dev/null 2>&1 || true
   fi
 
   cat << EOF > "${ROOT_PREFIX}/etc/default/grub"
@@ -795,7 +887,7 @@ GRUB_RECORDFAIL_TIMEOUT=0
 GRUB_TIMEOUT_STYLE=hidden
 GRUB_HIDDEN_TIMEOUT=0
 GRUB_HIDDEN_TIMEOUT_QUIET=true
-GRUB_DISTRIBUTOR="XIQI OS v1.0 - Corporação Engecema"
+GRUB_DISTRIBUTOR="XIQI OS v1.0 - Engecema"
 GRUB_CMDLINE_LINUX_DEFAULT="${QUIET_OPTS}"
 GRUB_CMDLINE_LINUX="${QUIET_OPTS}"
 EOF
@@ -812,7 +904,168 @@ EOF
   fi
 
   if [ -f "${ROOT_PREFIX}/boot/grub/grub.cfg" ]; then
-    sed -i "s|set timeout=[0-9-]*|set timeout=0|g; s|set timeout_style=[^[:space:]]*|set timeout_style=hidden|g" "${ROOT_PREFIX}/boot/grub/grub.cfg" 2>/dev/null || true
+    sed -i "s|menuentry '[^']*'|menuentry 'XIQI OS v1.0 - Engecema'|g; s|menuentry \"[^\"]*\"|menuentry \"XIQI OS v1.0 - Engecema\"|g; s|Loading Linux[^'\"]*|Carregando XIQI OS Core x86_64|g; s|Alpine Linux|XIQI OS v1.0 - Engecema|g; s|set timeout=[0-9-]*|set timeout=0|g; s|set timeout_style=[^[:space:]]*|set timeout_style=hidden|g" "${ROOT_PREFIX}/boot/grub/grub.cfg" 2>/dev/null || true
+  fi
+}
+
+configure_anti_suspend_and_power_lock() {
+  ROOT_PREFIX="${1:-}"
+
+  # 1. Bloquear definitivamente targets de sleep/suspend/hibernate no systemd
+  mkdir -p \
+    "${ROOT_PREFIX}/etc/systemd/system" \
+    "${ROOT_PREFIX}/etc/systemd/sleep.conf.d" \
+    "${ROOT_PREFIX}/etc/systemd/logind.conf.d" \
+    "${ROOT_PREFIX}/etc/elogind/sleep.conf.d" \
+    "${ROOT_PREFIX}/etc/elogind/logind.conf.d" \
+    "${ROOT_PREFIX}/etc/acpi/events" \
+    "${ROOT_PREFIX}/etc/UPower" \
+    "${ROOT_PREFIX}/etc/xdg/autostart" \
+    "${ROOT_PREFIX}/etc/local.d" \
+    "${ROOT_PREFIX}/home/xiqi/.config/xfce4/xfconf/xfce-perchannel-xml"
+
+  for target in sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target; do
+    ln -sf /dev/null "${ROOT_PREFIX}/etc/systemd/system/${target}"
+  done
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/sleep.conf.d/99-xiqi-no-sleep.conf"
+[Sleep]
+AllowSuspend=no
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/systemd/sleep.conf.d/99-xiqi-no-sleep.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/logind.conf.d/99-xiqi-no-suspend.conf"
+[Login]
+HandleSuspendKey=ignore
+HandleSuspendKeyLongPress=ignore
+HandleHibernateKey=ignore
+HandleHibernateKeyLongPress=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+IdleAction=ignore
+IdleActionSec=0
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/systemd/logind.conf.d/99-xiqi-no-suspend.conf"
+
+  # 2. Bloquear suspensão/hibernação/idle no elogind
+  cp -f "${ROOT_PREFIX}/etc/systemd/sleep.conf.d/99-xiqi-no-sleep.conf" "${ROOT_PREFIX}/etc/elogind/sleep.conf.d/99-xiqi-no-sleep.conf"
+  cp -f "${ROOT_PREFIX}/etc/systemd/logind.conf.d/99-xiqi-no-suspend.conf" "${ROOT_PREFIX}/etc/elogind/logind.conf.d/99-xiqi-no-suspend.conf"
+  chmod 644 "${ROOT_PREFIX}/etc/elogind/sleep.conf.d/99-xiqi-no-sleep.conf" "${ROOT_PREFIX}/etc/elogind/logind.conf.d/99-xiqi-no-suspend.conf"
+
+  # 3. Bloquear eventos ACPI de sleep, lid, suspend e hibernate (sem afetar poweroff explícito)
+  for ev in sleep lid suspend hibernate; do
+    rm -f "${ROOT_PREFIX}/etc/acpi/events/"*"${ev}"* 2>/dev/null || true
+  done
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/acpi/events/xiqi-ignore-sleep"
+event=button/sleep.*|button/lid.*|button/suspend.*|button/hibernate.*
+action=/bin/true
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/acpi/events/xiqi-ignore-sleep"
+
+  # 4. Neutralizar UPower, xfce4-power-manager, xscreensaver e light-locker
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/UPower/UPower.conf"
+[UPower]
+IgnoreLid=true
+UsePercentageForPolicy=false
+CriticalPowerAction=Ignore
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/UPower/UPower.conf"
+
+  for desk in xfce4-power-manager.desktop xscreensaver.desktop light-locker.desktop; do
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/xdg/autostart/${desk}"
+[Desktop Entry]
+Type=Application
+Name=Disabled by XIQI OS
+Hidden=true
+NoDisplay=true
+X-GNOME-Autostart-enabled=false
+EOF
+    chmod 644 "${ROOT_PREFIX}/etc/xdg/autostart/${desk}"
+  done
+
+  cat << 'EOF' > "${ROOT_PREFIX}/home/xiqi/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml"
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="dpms-on-ac-sleep" type="uint" value="0"/>
+    <property name="dpms-on-ac-off" type="uint" value="0"/>
+    <property name="blank-on-ac" type="int" value="0"/>
+    <property name="inactivity-on-ac" type="uint" value="0"/>
+    <property name="inactivity-sleep-mode-on-ac" type="uint" value="0"/>
+    <property name="lid-action-on-ac" type="uint" value="0"/>
+    <property name="lock-screen-suspend-hibernate" type="bool" value="false"/>
+    <property name="presentation-mode" type="bool" value="true"/>
+  </property>
+</channel>
+EOF
+
+  cat << 'EOF' > "${ROOT_PREFIX}/home/xiqi/.xscreensaver"
+mode: off
+timeout: 0:00:00
+dpmsEnabled: False
+dpmsStandby: 0:00:00
+dpmsSuspend: 0:00:00
+dpmsOff: 0:00:00
+lock: False
+EOF
+
+  # 5. Bloqueio de blanking no console do kernel no boot (OpenRC local.d + systemd oneshot)
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/local.d/99-xiqi-no-blank.start"
+#!/bin/sh
+if [ -w /sys/module/kernel/parameters/consoleblank ]; then
+  echo 0 > /sys/module/kernel/parameters/consoleblank 2>/dev/null || true
+fi
+if command -v setterm >/dev/null 2>&1; then
+  for tty_dev in /dev/tty1 /dev/tty2 /dev/tty7; do
+    if [ -w "${tty_dev}" ]; then
+      setterm -blank 0 -powerdown 0 -powersave off < "${tty_dev}" > "${tty_dev}" 2>/dev/null || true
+    fi
+  done
+fi
+EOF
+  chmod 755 "${ROOT_PREFIX}/etc/local.d/99-xiqi-no-blank.start"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-power-lock.service"
+[Unit]
+Description=XIQI OS Disable Console Blanking and Power Sleep
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/etc/local.d/99-xiqi-no-blank.start
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  if [ -z "${ROOT_PREFIX}" ]; then
+    chown -R xiqi:xiqi /home/xiqi/.config /home/xiqi/.xscreensaver 2>/dev/null || true
+    /etc/local.d/99-xiqi-no-blank.start 2>/dev/null || true
+    if command -v rc-update >/dev/null 2>&1; then
+      rc-update add local default 2>/dev/null || true
+      for pwr_svc in elogind acpid upowerd; do
+        if [ -x "/etc/init.d/${pwr_svc}" ]; then
+          rc-service "${pwr_svc}" restart 2>/dev/null || true
+        fi
+      done
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload 2>/dev/null || true
+      systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target 2>/dev/null || true
+      systemctl enable --now xiqi-power-lock.service 2>/dev/null || true
+      systemctl restart systemd-logind 2>/dev/null || true
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+    chroot "${ROOT_PREFIX}" chown -R xiqi:xiqi /home/xiqi/.config /home/xiqi/.xscreensaver 2>/dev/null || true
+    if [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+      chroot "${ROOT_PREFIX}" rc-update add local default 2>/dev/null || true
+    fi
   fi
 }
 
@@ -925,12 +1178,20 @@ const KEY_FILE = '/opt/xiqi/config/certs/xiqios.key';
 const TARGET_HOST = '127.0.0.1';
 const TARGET_PORT = Number(process.env.PORT) || 3000;
 
+function sanitizeHost(rawHost) {
+  const h = String(rawHost || '').split(',')[0].trim().split(':')[0];
+  return /^[a-z0-9.-]+$/i.test(h) ? h : 'xiqios';
+}
+
 function forwardHttp(req, res) {
-  const headers = Object.assign({}, req.headers, {
-    'x-forwarded-proto': 'https',
-    'x-forwarded-for': (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'] + ', ' : '') + (req.socket.remoteAddress || '127.0.0.1'),
-    'x-forwarded-host': req.headers.host || 'xiqios'
-  });
+  const remoteIp = req.socket.remoteAddress || '127.0.0.1';
+  const headers = Object.assign({}, req.headers);
+  delete headers['forwarded'];
+  headers['x-forwarded-proto'] = 'https';
+  headers['x-forwarded-for'] = remoteIp;
+  headers['x-real-ip'] = remoteIp;
+  headers['x-forwarded-host'] = sanitizeHost(req.headers.host);
+
   const proxyReq = http.request({
     hostname: TARGET_HOST,
     port: TARGET_PORT,
@@ -951,12 +1212,18 @@ function forwardHttp(req, res) {
 }
 
 function forwardUpgrade(req, socket, head) {
+  const remoteIp = socket.remoteAddress || '127.0.0.1';
   const upstream = net.connect(TARGET_PORT, TARGET_HOST, () => {
     let raw = `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n`;
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
-      raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
+      const name = String(req.rawHeaders[i] || '');
+      const low = name.toLowerCase();
+      if (low === 'x-forwarded-for' || low === 'x-forwarded-proto' || low === 'x-forwarded-host' || low === 'x-real-ip' || low === 'forwarded') {
+        continue;
+      }
+      raw += `${name}: ${req.rawHeaders[i + 1]}\r\n`;
     }
-    raw += 'X-Forwarded-Proto: https\r\n\r\n';
+    raw += `X-Forwarded-Proto: https\r\nX-Forwarded-For: ${remoteIp}\r\nX-Real-IP: ${remoteIp}\r\nX-Forwarded-Host: ${sanitizeHost(req.headers.host)}\r\n\r\n`;
     upstream.write(raw);
     if (head && head.length) upstream.write(head);
     upstream.pipe(socket);
@@ -969,17 +1236,23 @@ function forwardUpgrade(req, socket, head) {
 if (fs.existsSync(CERT_FILE) && fs.existsSync(KEY_FILE)) {
   const tlsServer = https.createServer({
     cert: fs.readFileSync(CERT_FILE),
-    key: fs.readFileSync(KEY_FILE)
+    key: fs.readFileSync(KEY_FILE),
+    minVersion: 'TLSv1.2'
   }, forwardHttp);
+  tlsServer.requestTimeout = 30000;
+  tlsServer.headersTimeout = 15000;
   tlsServer.on('upgrade', forwardUpgrade);
   tlsServer.listen(443, '0.0.0.0');
 }
 
 const redirectServer = http.createServer((req, res) => {
-  const host = String(req.headers.host || 'xiqios').split(':')[0];
-  res.writeHead(301, { Location: `https://${host}${req.url || '/'}` });
+  const host = sanitizeHost(req.headers.host);
+  const safePath = '/' + String(req.url || '/').replace(/[\r\n]/g, '').replace(/^\/+/, '');
+  res.writeHead(301, { Location: `https://${host}${safePath}` });
   res.end();
 });
+redirectServer.requestTimeout = 15000;
+redirectServer.headersTimeout = 10000;
 redirectServer.listen(80, '0.0.0.0');
 EOF
   chmod 755 "${XIQI_BASE}/bin/xiqi-https-proxy.js"
@@ -1044,23 +1317,25 @@ EOF
     NGINX_CONF='server {
   listen 80 default_server;
   server_name _;
+  server_tokens off;
   return 301 https://$host$request_uri;
 }
 
 server {
   listen 443 ssl default_server;
   server_name _;
+  server_tokens off;
   ssl_certificate /opt/xiqi/config/certs/xiqios.crt;
   ssl_certificate_key /opt/xiqi/config/certs/xiqios.key;
   ssl_protocols TLSv1.2 TLSv1.3;
-  client_max_body_size 25m;
+  client_max_body_size 2m;
 
   location / {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
     proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto https;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";

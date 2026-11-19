@@ -66,12 +66,14 @@ loadEnvFiles();
 const CONFIG_DIR = (() => {
   const preferred = process.env.XIQI_CONFIG_DIR || '/opt/xiqi/config';
   try {
-    fs.mkdirSync(preferred, { recursive: true });
+    fs.mkdirSync(preferred, { recursive: true, mode: 0o700 });
     fs.accessSync(preferred, fs.constants.W_OK);
+    try { fs.chmodSync(preferred, 0o700); } catch {}
     return preferred;
   } catch {
     const fallback = path.join(__dirname, '.xiqi-config');
-    fs.mkdirSync(fallback, { recursive: true });
+    fs.mkdirSync(fallback, { recursive: true, mode: 0o700 });
+    try { fs.chmodSync(fallback, 0o700); } catch {}
     return fallback;
   }
 })();
@@ -343,7 +345,15 @@ function pinnedHttpRequest(targetUrl, pinned, options = {}) {
     }
 
     let settled = false;
+    let overallTimer = null;
+    const clearOverall = () => {
+      if (overallTimer) {
+        clearTimeout(overallTimer);
+        overallTimer = null;
+      }
+    };
     const fail = err => {
+      clearOverall();
       if (!settled) {
         settled = true;
         reject(err);
@@ -415,6 +425,7 @@ function pinnedHttpRequest(targetUrl, pinned, options = {}) {
             err.statusCode = 413;
             return fail(err);
           }
+          clearOverall();
           settled = true;
           resolve({ status, headers, bodyBuffer: buf });
         });
@@ -422,9 +433,15 @@ function pinnedHttpRequest(targetUrl, pinned, options = {}) {
       }
     );
 
+    overallTimer = setTimeout(() => {
+      req.destroy(new Error('Tempo limite total excedido na conexão externa.'));
+    }, timeoutMs + 5000);
+    if (typeof overallTimer.unref === 'function') overallTimer.unref();
+
     req.on('timeout', () => {
       req.destroy(new Error('Tempo limite excedido na conexão externa.'));
     });
+    req.on('close', clearOverall);
     req.on('error', fail);
     req.end();
   });
@@ -556,6 +573,14 @@ app.use('/api', (req, res, next) => {
   if (secFetchSite === 'cross-site') {
     return res.status(403).json({ error: 'Requisição cross-site bloqueada por política CSRF.' });
   }
+  const contentType = String(req.headers['content-type'] || '').toLowerCase();
+  if (
+    contentType.includes('application/x-www-form-urlencoded') ||
+    contentType.includes('multipart/form-data') ||
+    contentType.includes('text/plain')
+  ) {
+    return res.status(415).json({ error: 'Content-Type não permitido para esta API.' });
+  }
   const isTrustedProxy = isLocalLoopbackRequest(req) || Boolean(process.env.K_SERVICE);
   const forwardedHost = isTrustedProxy ? req.headers['x-forwarded-host'] : '';
   const normalizeHost = h => String(h || '').split(',')[0].trim().toLowerCase().replace(/:(80|443)$/, '');
@@ -600,9 +625,10 @@ app.use((req, res, next) => {
   }
 
   if (req.path.startsWith('/api/proxy')) {
+    res.setHeader('X-Download-Options', 'noopen');
     res.setHeader(
       'Content-Security-Policy',
-      "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox;"
+      "sandbox allow-scripts allow-forms allow-popups; default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; object-src 'none';"
     );
   } else if (req.path.startsWith('/api/search')) {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -905,10 +931,10 @@ app.post('/api/store', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/auth/register', rateLimit('auth_reg', 60 * 1000, 15), (req, res) => {
+app.post('/api/auth/register', rateLimit('auth_reg', 10 * 60 * 1000, 10), (req, res) => {
   const body = stripProtoPollution(req.body || {});
-  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
-  const identifier = typeof body.identifier === 'string' ? body.identifier.trim().slice(0, 120) : '';
+  const name = typeof body.name === 'string' ? body.name.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 80) : '';
+  const identifier = typeof body.identifier === 'string' ? body.identifier.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 120) : '';
   const pin = typeof body.pin === 'string' ? body.pin : '';
 
   if (name.length < 2) {
@@ -1703,6 +1729,12 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
       return;
     }
 
+    if (mimeOnly === 'image/svg+xml' || mimeOnly === 'text/xml' || mimeOnly === 'application/xml') {
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src 'self' data:;");
+      res.status(safeStatus).setHeader('Content-Type', mimeOnly).send(rawBuf);
+      return;
+    }
+
     res.status(safeStatus).setHeader('Content-Type', rawContentType || 'application/octet-stream').send(rawBuf);
   } catch (err) {
     if (res.headersSent) return;
@@ -1831,8 +1863,9 @@ app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
         error: 'Limite de requisições da XIQI AI atingido. Tente novamente em instantes.'
       });
     }
+    const safeMsg = rawMsg.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[CHAVE_PROTEGIDA]').slice(0, 160);
     res.status(502).json({
-      error: 'Falha ao consultar a XIQI AI: ' + (rawMsg || 'erro inesperado no servidor.')
+      error: 'Falha ao consultar a XIQI AI: ' + (safeMsg || 'erro inesperado no servidor.')
     });
   }
 });
@@ -1868,7 +1901,7 @@ function isLocalLoopbackRequest(req) {
 function canControlSystem(req) {
   const clientIp = String(req.ip || (req.socket && req.socket.remoteAddress) || '').trim();
   const isClientLoopback = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
-  return isClientLoopback || Boolean(getAuthenticatedUserId(req)) || checkAdmin(req);
+  return isClientLoopback || checkAdmin(req);
 }
 
 function execFileAsync(cmd, args, opts = {}) {
@@ -1980,7 +2013,10 @@ app.post('/api/system/update', rateLimit('sys_update', 60 * 1000, 6), async (req
       setTimeout(() => process.exit(0), 1000).unref();
     }, 350);
   } catch (err) {
-    const detail = String(err && (err.stderr || err.message) || 'Falha ao atualizar via Git.').trim().slice(0, 240);
+    const detail = String(err && (err.stderr || err.message) || 'Falha ao atualizar via Git.')
+      .replace(/https?:\/\/[^@\s]+@/gi, 'https://***@')
+      .trim()
+      .slice(0, 200);
     res.status(500).json({
       error: 'Falha ao atualizar o sistema: ' + detail
     });

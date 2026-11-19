@@ -115,8 +115,12 @@ class XiqiBrowser(Gtk.Window):
         self.maximize()
         self.connect("destroy", Gtk.main_quit)
         self.connect("key-press-event", self.on_key_press)
+        self.connect("window-state-event", self.on_window_state_event)
+        self.connect("visibility-notify-event", self.on_visibility_event)
+        self.add_events(Gdk.EventMask.VISIBILITY_NOTIFY_MASK | Gdk.EventMask.STRUCTURE_MASK)
 
         apply_keyboard_layout("abnt2", "br")
+        self.disable_screen_power_timers()
 
         gtk_settings = Gtk.Settings.get_default()
         if gtk_settings is not None:
@@ -137,10 +141,13 @@ class XiqiBrowser(Gtk.Window):
                 Gtk.StyleContext.add_provider_for_screen(
                     screen, css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
                 )
+                screen.connect("size-changed", self.on_screen_changed)
+                screen.connect("monitors-changed", self.on_screen_changed)
         except Exception:
             pass
 
         self.is_fullscreen = os.environ.get("XIQI_FULLSCREEN", "1") == "1"
+        self.is_iconified = False
 
         self.ctx = self._build_web_context()
         cm = self.ctx.get_cookie_manager()
@@ -196,13 +203,63 @@ class XiqiBrowser(Gtk.Window):
 
         if initial_wv is not None:
             GLib.idle_add(lambda: self.load_when_ready(initial_wv, DEFAULT_HOME))
+        GLib.timeout_add_seconds(60, self.keep_display_alive)
+
+    def disable_screen_power_timers(self):
+        for args in (
+            ["xset", "s", "off"],
+            ["xset", "-dpms"],
+            ["xset", "s", "noblank"],
+            ["xset", "s", "0", "0"],
+        ):
+            try:
+                subprocess.run(args, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+            except Exception:
+                pass
+
+    def keep_display_alive(self):
+        self.disable_screen_power_timers()
+        if not self.is_iconified:
+            wv = self.current_webview()
+            if wv is not None:
+                wv.queue_draw()
+            self.queue_draw()
+        return True
+
+    def on_window_state_event(self, widget, event):
+        self.is_iconified = bool(event.new_window_state & Gdk.WindowState.ICONIFIED)
+        return False
+
+    def on_visibility_event(self, widget, event):
+        if not self.is_iconified and event.state == Gdk.VisibilityState.UNOBSCURED:
+            wv = self.current_webview()
+            if wv is not None:
+                wv.queue_draw()
+        return False
+
+    def on_screen_changed(self, _screen):
+        self.disable_screen_power_timers()
+        try:
+            subprocess.run(["xrandr", "--auto"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        except Exception:
+            pass
+        if not self.is_iconified:
+            if self.is_fullscreen:
+                self.fullscreen()
+            self.present()
+            wv = self.current_webview()
+            if wv is not None:
+                wv.queue_draw()
+            self.queue_draw()
 
     def _build_web_context(self):
         base_data = os.path.join(os.path.expanduser("~"), ".local", "share", "xiqi-browser")
         base_cache = os.path.join(os.path.expanduser("~"), ".cache", "xiqi-browser")
         try:
-            os.makedirs(base_data, exist_ok=True)
-            os.makedirs(base_cache, exist_ok=True)
+            os.makedirs(base_data, mode=0o700, exist_ok=True)
+            os.makedirs(base_cache, mode=0o700, exist_ok=True)
+            os.chmod(base_data, 0o700)
+            os.chmod(base_cache, 0o700)
             data_mgr = WebKit2.WebsiteDataManager(
                 base_data_directory=base_data,
                 base_cache_directory=base_cache,
@@ -357,6 +414,8 @@ class XiqiBrowser(Gtk.Window):
             ("set_enable_site_specific_quirks", True),
             ("set_enable_java", False),
             ("set_enable_plugins", False),
+            ("set_enable_hyperlink_auditing", False),
+            ("set_enable_dns_prefetching", False),
             ("set_allow_file_access_from_file_urls", False),
             ("set_allow_universal_access_from_file_urls", False),
             ("set_enable_developer_extras", False),
@@ -380,7 +439,7 @@ class XiqiBrowser(Gtk.Window):
             nav = decision.get_navigation_action()
             req = nav.get_request() if nav else None
             uri = req.get_uri() if req else ""
-            if uri and not re.match(r'^(https?://|about:|blob:|data:)', uri, re.IGNORECASE):
+            if uri and not re.match(r'^(https?://|about:blank$|blob:)', uri, re.IGNORECASE):
                 decision.ignore()
                 return True
         return False

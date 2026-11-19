@@ -7,8 +7,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 TARGET_ROOT="${1:-}"
-XIQI_TITLE="XIQI OS v1.0 - Corporação Engecema"
-QUIET_PARAMS="quiet loglevel=0 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false fbcon=nodefer"
+XIQI_TITLE="XIQI OS v1.0 - Engecema"
+QUIET_PARAMS="quiet loglevel=0 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false fbcon=nodefer consoleblank=0 acpi_sleep=nonvs nohz=off nohibernate"
 
 mkdir -p "${TARGET_ROOT}/etc" "${TARGET_ROOT}/etc/default" "${TARGET_ROOT}/etc/sysctl.d" "${TARGET_ROOT}/boot" "${TARGET_ROOT}/opt/xiqi/config"
 
@@ -72,9 +72,9 @@ if [ -z "${TARGET_ROOT}" ]; then
   sysctl -q -p /etc/sysctl.d/99-xiqi-quiet.conf 2>/dev/null || true
 fi
 
-# 5. Bootloader 100% silencioso e instantâneo (0s real no /boot/extlinux.conf, /etc/update-extlinux.conf e /etc/default/grub)
+# 5. Bootloader 100% silencioso e instantâneo (0s real no gerenciador de boot XIQI OS Core x86_64 e GRUB)
 if [ -f "${TARGET_ROOT}/etc/update-extlinux.conf" ]; then
-  sed -i 's|^timeout=.*|timeout=1|g' "${TARGET_ROOT}/etc/update-extlinux.conf" 2>/dev/null || true
+  sed -i 's|^timeout=.*|timeout=0|g' "${TARGET_ROOT}/etc/update-extlinux.conf" 2>/dev/null || true
   if grep -q '^default_kernel_opts=' "${TARGET_ROOT}/etc/update-extlinux.conf"; then
     sed -i "s|^default_kernel_opts=.*|default_kernel_opts=\"${QUIET_PARAMS}\"|g" "${TARGET_ROOT}/etc/update-extlinux.conf"
   else
@@ -87,25 +87,26 @@ if [ -f "${TARGET_ROOT}/boot/extlinux.conf" ]; then
   awk -v title="${XIQI_TITLE}" -v qopts="${QUIET_PARAMS}" '
     BEGIN { has_hidden=0; has_silent=0; has_title=0; has_prompt=0; has_timeout=0; has_totaltimeout=0; }
     /^MENU TITLE / { print "MENU TITLE " title; has_title=1; next; }
-    /^MENU LABEL / { print "MENU LABEL " title; next; }
+    /^MENU LABEL / { print "MENU LABEL XIQI OS Core x86_64"; next; }
+    /^SAY / { next; }
     /^MENU AUTOBOOT/ { next; }
     /^UI / { next; }
-    /^TIMEOUT / { print "TIMEOUT 1"; has_timeout=1; next; }
-    /^TOTALTIMEOUT / { print "TOTALTIMEOUT 1"; has_totaltimeout=1; next; }
+    /^TIMEOUT / { print "TIMEOUT 0"; has_timeout=1; next; }
+    /^TOTALTIMEOUT / { print "TOTALTIMEOUT 0"; has_totaltimeout=1; next; }
     /^PROMPT / { print "PROMPT 0"; has_prompt=1; next; }
     /^MENU HIDDEN/ { print "MENU HIDDEN"; has_hidden=1; next; }
     /^MENU SILENT/ { print "MENU SILENT"; has_silent=1; next; }
     /^[[:space:]]*APPEND / {
       line=$0
-      gsub(/[[:space:]]+(quiet|loglevel=[0-9]+|vt\.global_cursor_default=[0-9]+|rd\.udev\.log_level=[0-9]+|systemd\.show_status=[a-z]+|fbcon=nodefer|debug|verbose)/, "", line)
+      gsub(/[[:space:]]+(quiet|loglevel=[0-9]+|vt\.global_cursor_default=[0-9]+|rd\.udev\.log_level=[0-9]+|systemd\.show_status=[a-z]+|fbcon=nodefer|consoleblank=[0-9]+|acpi_sleep=[^[:space:]]+|nohz=[^[:space:]]+|nohibernate|debug|verbose)/, "", line)
       print line " " qopts
       next
     }
     { print }
     END {
       if (!has_prompt) print "PROMPT 0"
-      if (!has_timeout) print "TIMEOUT 1"
-      if (!has_totaltimeout) print "TOTALTIMEOUT 1"
+      if (!has_timeout) print "TIMEOUT 0"
+      if (!has_totaltimeout) print "TOTALTIMEOUT 0"
       if (!has_title) print "MENU TITLE " title
       if (!has_hidden) print "MENU HIDDEN"
       if (!has_silent) print "MENU SILENT"
@@ -117,14 +118,14 @@ elif command -v extlinux >/dev/null 2>&1 || [ -f "${TARGET_ROOT}/etc/update-extl
   cat << EOF > "${TARGET_ROOT}/boot/extlinux.conf"
 DEFAULT xiqios
 PROMPT 0
-TIMEOUT 1
-TOTALTIMEOUT 1
+TIMEOUT 0
+TOTALTIMEOUT 0
 MENU HIDDEN
 MENU SILENT
 MENU TITLE ${XIQI_TITLE}
 
 LABEL xiqios
-  MENU LABEL ${XIQI_TITLE}
+  MENU LABEL XIQI OS Core x86_64
   APPEND ${QUIET_PARAMS}
 EOF
   chmod 644 "${TARGET_ROOT}/boot/extlinux.conf"
@@ -154,7 +155,7 @@ elif command -v chroot >/dev/null 2>&1 && [ -x "${TARGET_ROOT}/bin/sh" ] && [ -d
 fi
 
 if [ -f "${TARGET_ROOT}/boot/grub/grub.cfg" ]; then
-  sed -i "s|menuentry '[^']*'|menuentry '${XIQI_TITLE}'|g; s|set timeout=[0-9-]*|set timeout=0|g; s|set timeout_style=[^[:space:]]*|set timeout_style=hidden|g" "${TARGET_ROOT}/boot/grub/grub.cfg" 2>/dev/null || true
+  sed -i "s|menuentry '[^']*'|menuentry '${XIQI_TITLE}'|g; s|menuentry \"[^\"]*\"|menuentry \"${XIQI_TITLE}\"|g; s|Loading Linux[^'\"]*|Carregando XIQI OS Core x86_64|g; s|Alpine Linux|XIQI OS v1.0 - Engecema|g; s|set timeout=[0-9-]*|set timeout=0|g; s|set timeout_style=[^[:space:]]*|set timeout_style=hidden|g" "${TARGET_ROOT}/boot/grub/grub.cfg" 2>/dev/null || true
 fi
 
 # 6. Configuração interna neutra XIQI OS

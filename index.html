@@ -2562,7 +2562,7 @@
             if (tab.externalOpenedFor !== tab.url) {
               tab.externalOpenedFor = tab.url;
               tab.useProxy = false;
-              window.open(tab.url, '_blank', 'noopener');
+              window.open(tab.url, '_blank', 'noopener,noreferrer');
               closeBlockedTabAndFallback(getActiveSession(), tab);
             }
           })
@@ -2622,7 +2622,7 @@
             var targetSrc = computeIframeSrc(activeTab);
             var nextSandbox = targetSrc.startsWith('/api/search')
               ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
-              : 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads';
+              : 'allow-scripts allow-forms allow-popups allow-modals allow-downloads';
             if (iframe.getAttribute('sandbox') !== nextSandbox) {
               iframe.setAttribute('sandbox', nextSandbox);
             }
@@ -2714,7 +2714,7 @@
           }
         } else if (e.data.type === 'xiqi-proxy-navigate' && typeof e.data.url === 'string' && /^https?:\/\//i.test(e.data.url) && isSafeHttpUrl(e.data.url)) {
           var safeNavUrl = e.data.url.slice(0, 2000);
-          if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|169\.254\.|\[::1\]|0\.0\.0\.0|xiqios\b)/i.test(safeNavUrl)) return;
+          if (/^https?:\/\/(?:localhost|127\.|10\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[::ffff:|[^\/?#]+\.(?:local|internal|localhost)\b|xiqios\b)/i.test(safeNavUrl)) return;
           var session = getActiveSession();
           var tab = session.tabs.find(function (t) { return t.id === session.activeTabId; });
           if (tab && tab.type === 'web' && tab.useProxy) {
@@ -2731,7 +2731,7 @@
           var sess = getActiveSession();
           var activeT = sess.tabs.find(function (t) { return t.id === sess.activeTabId; });
           if (activeT && activeT.type === 'web' && activeT.useProxy) {
-            activeT.title = String(e.data.title).slice(0, 48);
+            activeT.title = String(e.data.title).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 48);
             renderMiniTabs(sess);
           }
         }
