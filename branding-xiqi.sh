@@ -8,7 +8,7 @@ fi
 
 TARGET_ROOT="${1:-}"
 XIQI_TITLE="XIQI OS v1.0 - Engecema"
-QUIET_PARAMS="quiet loglevel=0 console=tty3 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false fbcon=nodefer consoleblank=0 acpi_sleep=nonvs nohz=off nohibernate"
+QUIET_PARAMS="quiet loglevel=0 console=tty3 vt.global_cursor_default=0 rd.udev.log_level=0 udev.log_level=0 udev.log_priority=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer consoleblank=0 logo.nologo acpi_sleep=nonvs nohz=off nohibernate"
 
 mkdir -p "${TARGET_ROOT}/etc" "${TARGET_ROOT}/etc/conf.d" "${TARGET_ROOT}/etc/default" "${TARGET_ROOT}/etc/sysctl.d" "${TARGET_ROOT}/boot" "${TARGET_ROOT}/opt/xiqi/config"
 
@@ -39,14 +39,36 @@ if [ ! -f "${TARGET_ROOT}/etc/hosts" ]; then
 EOF
 fi
 
-# 3. Banners silenciosos (sem listas de pastas, partições ou nomes externos)
-cat << 'EOF' > "${TARGET_ROOT}/etc/issue"
-XIQI OS v1.0 - Corporação Engecema
-EOF
+# 3. Banners silenciosos e login automático direto no usuário root (sem prompt xiqios login:)
+: > "${TARGET_ROOT}/etc/issue"
+: > "${TARGET_ROOT}/etc/motd"
 
-cat << 'EOF' > "${TARGET_ROOT}/etc/motd"
-XIQI OS v1.0 - Corporação Engecema
+mkdir -p "${TARGET_ROOT}/opt/xiqi/bin" "${TARGET_ROOT}/etc/systemd/system/getty@tty1.service.d"
+cat << 'EOF' > "${TARGET_ROOT}/opt/xiqi/bin/xiqi-autologin"
+#!/bin/sh
+exec /bin/login -f root
 EOF
+chmod 755 "${TARGET_ROOT}/opt/xiqi/bin/xiqi-autologin"
+
+if [ -f "${TARGET_ROOT}/etc/inittab" ]; then
+  if grep -qE '^tty1:' "${TARGET_ROOT}/etc/inittab" 2>/dev/null; then
+    awk '
+      /^tty1:/ { print "tty1::respawn:/sbin/getty -n -l /opt/xiqi/bin/xiqi-autologin 38400 tty1"; next }
+      { print }
+    ' "${TARGET_ROOT}/etc/inittab" > "${TARGET_ROOT}/etc/inittab.xiqi.tmp" && \
+    mv "${TARGET_ROOT}/etc/inittab.xiqi.tmp" "${TARGET_ROOT}/etc/inittab"
+  else
+    printf '\ntty1::respawn:/sbin/getty -n -l /opt/xiqi/bin/xiqi-autologin 38400 tty1\n' >> "${TARGET_ROOT}/etc/inittab"
+  fi
+  chmod 644 "${TARGET_ROOT}/etc/inittab"
+fi
+
+cat << 'EOF' > "${TARGET_ROOT}/etc/systemd/system/getty@tty1.service.d/autologin.conf"
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noissue --noclear %I $TERM
+EOF
+chmod 644 "${TARGET_ROOT}/etc/systemd/system/getty@tty1.service.d/autologin.conf"
 
 # 4. Silenciar console do sistema e acelerar inicialização paralela (/etc/rc.conf e /etc/sysctl.d/99-xiqi-quiet.conf)
 if [ -f "${TARGET_ROOT}/etc/rc.conf" ]; then
@@ -73,10 +95,29 @@ if [ -z "${TARGET_ROOT}" ]; then
 fi
 
 cat << 'EOF' > "${TARGET_ROOT}/etc/conf.d/fsck"
-fsck_args="-y -T -C 0"
+fsck_args="-a -T"
 rc_fsck_quiet="YES"
 EOF
 chmod 644 "${TARGET_ROOT}/etc/conf.d/fsck"
+
+if [ -f "${TARGET_ROOT}/etc/fstab" ]; then
+  awk '
+    /^[[:space:]]*#/ || NF < 6 { print; next }
+    $3 ~ /^(ext2|ext3|ext4|vfat)$/ { $6 = "0" }
+    { print }
+  ' "${TARGET_ROOT}/etc/fstab" > "${TARGET_ROOT}/etc/fstab.xiqi.tmp" && \
+  mv "${TARGET_ROOT}/etc/fstab.xiqi.tmp" "${TARGET_ROOT}/etc/fstab" && \
+  chmod 644 "${TARGET_ROOT}/etc/fstab"
+fi
+
+if [ -z "${TARGET_ROOT}" ]; then
+  if command -v rc-update >/dev/null 2>&1; then
+    rc-update del fsck boot 2>/dev/null || true
+  fi
+elif command -v chroot >/dev/null 2>&1 && [ -x "${TARGET_ROOT}/sbin/rc-update" ]; then
+  chroot "${TARGET_ROOT}" rc-update del fsck boot 2>/dev/null || true
+fi
+rm -f "${TARGET_ROOT}/etc/runlevels/boot/fsck" "${TARGET_ROOT}/boot/extlinux.conf.old" 2>/dev/null || true
 
 # 5. Bootloader GRUB 100% silencioso e remoção segura de resíduos do extlinux
 resolve_root_partition() {
@@ -183,8 +224,8 @@ verify_grub_default_entry() {
     }
     in_entry && /^[[:space:]]*\}/ { in_entry=0; exit }
     in_entry {
-      if ($0 ~ /vmlinuz-lts/) has_kern=1
-      if ($0 ~ /initramfs-lts/) has_initrd=1
+      if ($0 ~ /vmlinuz/) has_kern=1
+      if ($0 ~ /initramfs|initrd/) has_initrd=1
       if (req_uuid == "" || index($0, "root=UUID=" req_uuid) > 0) has_uuid=1
     }
     END {
@@ -195,7 +236,8 @@ verify_grub_default_entry() {
 }
 
 ROOT_PART="$(resolve_root_partition "${TARGET_ROOT}" || true)"
-DISK_DEV="$(resolve_parent_disk "${ROOT_PART}" || true)"
+BOOT_PART="$(resolve_root_partition "${TARGET_ROOT}/boot" || true)"
+DISK_DEV="$(resolve_parent_disk "${ROOT_PART}" || resolve_parent_disk "${BOOT_PART}" || true)"
 ROOT_UUID="$(resolve_root_uuid "${TARGET_ROOT}" "${ROOT_PART}")"
 if [ -z "${DISK_DEV}" ] && [ -z "${TARGET_ROOT}" ] && [ -b /dev/sda ]; then
   DISK_DEV="/dev/sda"
@@ -269,7 +311,7 @@ if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ]; then
         GRUB_INSTALL_OK="true"
       fi
     else
-      if grub-install --target=i386-pc --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
+      if grub-install --target=i386-pc --force --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
         GRUB_INSTALL_OK="true"
       fi
     fi
@@ -280,7 +322,7 @@ if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ]; then
           GRUB_INSTALL_OK="true"
         fi
       else
-        if chroot "${TARGET_ROOT}" grub-install --target=i386-pc --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
+        if chroot "${TARGET_ROOT}" grub-install --target=i386-pc --force --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
           GRUB_INSTALL_OK="true"
         fi
       fi
@@ -291,7 +333,7 @@ if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ]; then
           GRUB_INSTALL_OK="true"
         fi
       else
-        if grub-install --target=i386-pc --boot-directory="${TARGET_ROOT}/boot" "${DISK_DEV}" >/dev/null 2>&1; then
+        if grub-install --target=i386-pc --force --boot-directory="${TARGET_ROOT}/boot" "${DISK_DEV}" >/dev/null 2>&1; then
           GRUB_INSTALL_OK="true"
         fi
       fi
@@ -299,14 +341,21 @@ if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ]; then
   fi
 fi
 
+GRUB_MKCONFIG_OK="false"
 if [ -z "${TARGET_ROOT}" ]; then
   if command -v grub-mkconfig >/dev/null 2>&1; then
-    grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+    if grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1; then
+      GRUB_MKCONFIG_OK="true"
+    fi
   elif command -v update-grub >/dev/null 2>&1; then
-    update-grub >/dev/null 2>&1 || true
+    if update-grub >/dev/null 2>&1; then
+      GRUB_MKCONFIG_OK="true"
+    fi
   fi
 elif command -v chroot >/dev/null 2>&1 && [ -x "${TARGET_ROOT}/bin/sh" ]; then
-  chroot "${TARGET_ROOT}" sh -c 'if command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true; elif command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1 || true; fi' || true
+  if chroot "${TARGET_ROOT}" sh -c 'if command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1; elif command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1; else exit 1; fi'; then
+    GRUB_MKCONFIG_OK="true"
+  fi
 fi
 
 cleanup_branding_chroot_mounts
@@ -314,7 +363,6 @@ cleanup_branding_chroot_mounts
 GRUB_CFG="${TARGET_ROOT}/boot/grub/grub.cfg"
 BOOT_PREFIX="/boot"
 BOOT_SEARCH_UUID="${ROOT_UUID}"
-BOOT_PART="$(resolve_root_partition "${TARGET_ROOT}/boot" || true)"
 if [ -n "${BOOT_PART}" ] && [ -n "${ROOT_PART}" ] && [ "${BOOT_PART}" != "${ROOT_PART}" ]; then
   BOOT_PREFIX=""
   if command -v blkid >/dev/null 2>&1; then
@@ -322,7 +370,22 @@ if [ -n "${BOOT_PART}" ] && [ -n "${ROOT_PART}" ] && [ "${BOOT_PART}" != "${ROOT
   fi
 fi
 
-if [ -f "${TARGET_ROOT}/boot/vmlinuz-lts" ] && [ -f "${TARGET_ROOT}/boot/initramfs-lts" ] && [ -n "${ROOT_UUID}" ]; then
+DETECTED_KERN=""
+for k_cand in "${TARGET_ROOT}/boot/vmlinuz-lts" "${TARGET_ROOT}/boot"/vmlinuz-*; do
+  if [ -f "${k_cand}" ]; then
+    DETECTED_KERN="$(basename "${k_cand}")"
+    break
+  fi
+done
+DETECTED_INITRD=""
+for i_cand in "${TARGET_ROOT}/boot/initramfs-lts" "${TARGET_ROOT}/boot"/initramfs-* "${TARGET_ROOT}/boot"/initrd*; do
+  if [ -f "${i_cand}" ]; then
+    DETECTED_INITRD="$(basename "${i_cand}")"
+    break
+  fi
+done
+
+if [ -n "${DETECTED_KERN}" ] && [ -n "${DETECTED_INITRD}" ] && [ -n "${ROOT_UUID}" ]; then
   if ! verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
     cat << EOF > "${GRUB_CFG}"
 set default="0"
@@ -334,8 +397,8 @@ insmod ext2
 search --no-floppy --fs-uuid --set=root ${BOOT_SEARCH_UUID}
 
 menuentry '${XIQI_TITLE}' {
-  linux ${BOOT_PREFIX}/vmlinuz-lts root=UUID=${ROOT_UUID} ro ${QUIET_PARAMS}
-  initrd ${BOOT_PREFIX}/initramfs-lts
+  linux ${BOOT_PREFIX}/${DETECTED_KERN} root=UUID=${ROOT_UUID} ro ${QUIET_PARAMS}
+  initrd ${BOOT_PREFIX}/${DETECTED_INITRD}
 }
 EOF
     chmod 644 "${GRUB_CFG}"
@@ -344,7 +407,7 @@ fi
 
 sanitize_grub_cfg "${GRUB_CFG}"
 
-# Remover resíduos do extlinux somente após confirmar GRUB funcional com vmlinuz-lts, initramfs-lts e UUID raiz
+# Remover resíduos do extlinux/SYSLINUX somente após confirmar GRUB funcional
 GRUB_CORE_OK="false"
 if [ -f "${TARGET_ROOT}/boot/grub/i386-pc/core.img" ] || [ -f "${TARGET_ROOT}/boot/grub/x86_64-efi/core.efi" ] || [ -f "${TARGET_ROOT}/boot/grub/x86_64-efi/grub.efi" ] || [ -f "${TARGET_ROOT}/boot/efi/EFI/BOOT/BOOTX64.EFI" ]; then
   GRUB_CORE_OK="true"
@@ -353,13 +416,35 @@ if [ -n "${DISK_DEV}" ] && [ -b "${DISK_DEV}" ] && [ "${GRUB_INSTALL_OK}" != "tr
   GRUB_CORE_OK="false"
 fi
 
-if [ "${GRUB_CORE_OK}" = "true" ] && verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
-  for ext_res in "${TARGET_ROOT}/boot/ldlinux.sys" "${TARGET_ROOT}/boot/ldlinux.c32" "${TARGET_ROOT}/boot/extlinux.conf" "${TARGET_ROOT}/etc/update-extlinux.conf"; do
+if [ "${GRUB_INSTALL_OK}" = "true" ] && [ "${GRUB_MKCONFIG_OK}" = "true" ] && [ "${GRUB_CORE_OK}" = "true" ] && verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
+  for ext_res in "${TARGET_ROOT}/boot/ldlinux.sys" "${TARGET_ROOT}/boot/ldlinux.c32" "${TARGET_ROOT}/boot/extlinux.conf" "${TARGET_ROOT}/boot/syslinux.cfg" "${TARGET_ROOT}/etc/update-extlinux.conf"; do
     if [ -e "${ext_res}" ]; then
       chattr -i "${ext_res}" 2>/dev/null || true
       rm -f "${ext_res}"
     fi
   done
+elif [ -f "${TARGET_ROOT}/boot/extlinux.conf" ]; then
+  awk '
+    BEGIN { has_prompt=0; has_timeout=0; n=0 }
+    /^[[:space:]]*[Mm][Ee][Nn][Uu][[:space:]]+/ { next }
+    /^[[:space:]]*[Pp][Rr][Oo][Mm][Pp][Tt][[:space:]]+/ { lines[n++]="PROMPT 0"; has_prompt=1; next }
+    /^[[:space:]]*[Tt][Ii][Mm][Ee][Oo][Uu][Tt][[:space:]]+/ { lines[n++]="TIMEOUT 0"; has_timeout=1; next }
+    /^[[:space:]]*[Aa][Pp][Pp][Ee][Nn][Dd][[:space:]]+/ {
+      line = $0
+      if (line !~ /(^|[[:space:]])quiet([[:space:]]|$)/) line = line " quiet"
+      if (line !~ /(^|[[:space:]])loglevel=/) line = line " loglevel=0"
+      lines[n++] = line
+      next
+    }
+    { lines[n++] = $0 }
+    END {
+      if (!has_prompt) print "PROMPT 0"
+      if (!has_timeout) print "TIMEOUT 0"
+      for (i = 0; i < n; i++) print lines[i]
+    }
+  ' "${TARGET_ROOT}/boot/extlinux.conf" > "${TARGET_ROOT}/boot/extlinux.conf.xiqi.tmp" && \
+  mv "${TARGET_ROOT}/boot/extlinux.conf.xiqi.tmp" "${TARGET_ROOT}/boot/extlinux.conf" && \
+  chmod 644 "${TARGET_ROOT}/boot/extlinux.conf"
 fi
 
 # 6. Configuração interna neutra XIQI OS
@@ -410,7 +495,7 @@ if [ -f "${TARGET_ROOT}/home/xiqi/.xinitrc" ]; then
         print "  xfconf-query -c xfwm4 -p /general/double_click_action -n -t string -s \"maximize\" 2>/dev/null || xfconf-query -c xfwm4 -p /general/double_click_action -s \"maximize\" 2>/dev/null || true"
         print "fi"
         print $0
-        print "(sleep 1 && DISPLAY=:0 xsetroot -solid \"#ffffff\" >/dev/null 2>&1) &"
+        print "(sleep 1 && DISPLAY=:0 xsetroot -solid \"#f1f5f9\" >/dev/null 2>&1) &"
         next
       }
       { print }

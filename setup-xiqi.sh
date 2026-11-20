@@ -184,12 +184,59 @@ install_xiqi_stack() {
   fi
 
   echo "[4/7] Copiando aplicação e núcleo XIQI OS para ${XIQI_BASE}/app..."
-  for f in package.json package-lock.json server.js index.html admin.html xiqi-browser.py .env.example .env; do
+  for f in package.json package-lock.json server.js index.html admin.html xiqi-browser.py .env.example; do
     if [ -f "${SCRIPT_DIR}/${f}" ]; then
       cp -f "${SCRIPT_DIR}/${f}" "${XIQI_BASE}/app/${f}"
     fi
   done
+  EXISTING_AI_KEY=""
+  for env_src in "${XIQI_BASE}/app/.env" "${XIQI_BASE}/config/xiqi.env" "${XIQI_BASE}/apps/.env" "${XIQI_BASE}/env.backup" "${SCRIPT_DIR}/.env"; do
+    if [ -f "${env_src}" ]; then
+      FOUND_KEY="$(awk -F= '/^[[:space:]]*(export[[:space:]]+)?XIQI_AI_KEY[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/[\r\047"]/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") { print; exit }}' "${env_src}" 2>/dev/null || true)"
+      if [ -n "${FOUND_KEY}" ]; then
+        EXISTING_AI_KEY="${FOUND_KEY}"
+        break
+      fi
+    fi
+  done
+  if [ -z "${EXISTING_AI_KEY}" ]; then
+    for legacy_src in "${XIQI_BASE}/apps/.env" "${XIQI_BASE}/env.backup"; do
+      if [ -f "${legacy_src}" ]; then
+        FOUND_LEGACY_KEY="$(awk -F= '/^[[:space:]]*(export[[:space:]]+)?(XIQI_AI_KEY|GEMINI_API_KEY)[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/[\r\047"]/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") { print; exit }}' "${legacy_src}" 2>/dev/null || true)"
+        if [ -n "${FOUND_LEGACY_KEY}" ]; then
+          EXISTING_AI_KEY="${FOUND_LEGACY_KEY}"
+          break
+        fi
+      fi
+    done
+  fi
+  if [ -n "${XIQI_AI_KEY:-}" ]; then
+    EXISTING_AI_KEY="$(printf '%s' "${XIQI_AI_KEY}" | tr -d '\r')"
+  fi
+  if [ ! -f "${XIQI_BASE}/app/.env" ]; then
+    if [ -f "${SCRIPT_DIR}/.env" ]; then
+      cp -f "${SCRIPT_DIR}/.env" "${XIQI_BASE}/app/.env"
+    elif [ -f "${XIQI_BASE}/app/.env.example" ]; then
+      cp -f "${XIQI_BASE}/app/.env.example" "${XIQI_BASE}/app/.env"
+    else
+      printf 'XIQI_AI_KEY=\nXIQI_CONFIG_DIR=/opt/xiqi/config\n' > "${XIQI_BASE}/app/.env"
+    fi
+  fi
+  if [ -n "${EXISTING_AI_KEY}" ]; then
+    CURRENT_APP_KEY="$(awk -F= '/^[[:space:]]*(export[[:space:]]+)?XIQI_AI_KEY[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/[\r\047"]/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") { print; exit }}' "${XIQI_BASE}/app/.env" 2>/dev/null || true)"
+    if [ -z "${CURRENT_APP_KEY}" ] || [ -n "${XIQI_AI_KEY:-}" ]; then
+      if grep -qE '^[[:space:]]*(export[[:space:]]+)?XIQI_AI_KEY[[:space:]]*=' "${XIQI_BASE}/app/.env" 2>/dev/null; then
+        awk -v k="${EXISTING_AI_KEY}" '
+          /^[[:space:]]*(export[[:space:]]+)?XIQI_AI_KEY[[:space:]]*=/ { print "XIQI_AI_KEY=" k; next }
+          { print }
+        ' "${XIQI_BASE}/app/.env" > "${XIQI_BASE}/app/.env.tmp" && mv "${XIQI_BASE}/app/.env.tmp" "${XIQI_BASE}/app/.env"
+      else
+        printf '\nXIQI_AI_KEY=%s\n' "${EXISTING_AI_KEY}" >> "${XIQI_BASE}/app/.env"
+      fi
+    fi
+  fi
   if [ -f "${XIQI_BASE}/app/.env" ]; then
+    tr -d '\r' < "${XIQI_BASE}/app/.env" > "${XIQI_BASE}/app/.env.clean" && mv "${XIQI_BASE}/app/.env.clean" "${XIQI_BASE}/app/.env"
     chmod 600 "${XIQI_BASE}/app/.env" 2>/dev/null || true
   fi
   if [ -f "${XIQI_BASE}/app/xiqi-browser.py" ]; then
@@ -203,6 +250,10 @@ install_xiqi_stack() {
   elif [ -n "${ROOT_PREFIX}" ] && [ ! -d "${XIQI_BASE}/app/node_modules" ] && command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
     chroot "${ROOT_PREFIX}" sh -c "if command -v npm >/dev/null 2>&1; then cd /opt/xiqi/app && npm install --omit=dev; fi" || true
   fi
+  if { [ -e "${XIQI_BASE}/apps" ] || [ -L "${XIQI_BASE}/apps" ]; } && [ "${SCRIPT_DIR}" != "${XIQI_BASE}/apps" ]; then
+    rm -rf "${XIQI_BASE}/apps"
+  fi
+  rm -f "${XIQI_BASE}/env.backup" "${ROOT_PREFIX}/boot/extlinux.conf.old" 2>/dev/null || true
 
   echo "[5/7] Inicializando base neutra de perfis e configuração de rede..."
   if [ ! -f "${XIQI_BASE}/config/profiles.json" ]; then
@@ -262,19 +313,43 @@ cleanup_port() {
   fi
 }
 
+read_env_key() {
+  ENV_FILE="$1"
+  KEY_NAME="$2"
+  [ -f "${ENV_FILE}" ] || return 0
+  awk -F= -v k="${KEY_NAME}" '
+    {
+      gsub(/\r/, "")
+      line = $0
+      sub(/^[[:space:]]*export[[:space:]]+/, "", line)
+      sub(/^[[:space:]]+/, "", line)
+      if (index(line, k) == 1) {
+        rest = substr(line, length(k) + 1)
+        if (rest ~ /^[[:space:]]*=/) {
+          sub(/^[[:space:]]*=[[:space:]]*/, "", rest)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", rest)
+          if ((substr(rest, 1, 1) == "\"" && substr(rest, length(rest), 1) == "\"") || (substr(rest, 1, 1) == "\047" && substr(rest, length(rest), 1) == "\047")) {
+            rest = substr(rest, 2, length(rest) - 2)
+          }
+          if (rest != "") val = rest
+        }
+      }
+    }
+    END { if (val != "") print val }
+  ' "${ENV_FILE}" 2>/dev/null || true
+}
+
 load_env() {
   export PORT="${PORT:-3000}"
   export XIQI_CONFIG_DIR="${XIQI_CONF}"
-  if [ -f "${XIQI_APP}/.env" ]; then
-    set -a
-    . "${XIQI_APP}/.env"
-    set +a
-  fi
-  if [ -f "${XIQI_CONF}/xiqi.env" ]; then
-    set -a
-    . "${XIQI_CONF}/xiqi.env"
-    set +a
-  fi
+  for ef in "${XIQI_APP}/.env" "${XIQI_CONF}/xiqi.env" "${XIQI_CONF}/.env"; do
+    if [ -z "${XIQI_AI_KEY:-}" ]; then
+      PARSED_KEY="$(read_env_key "${ef}" "XIQI_AI_KEY")"
+      if [ -n "${PARSED_KEY}" ]; then
+        XIQI_AI_KEY="${PARSED_KEY}"
+      fi
+    fi
+  done
   export XIQI_AI_KEY="${XIQI_AI_KEY:-}"
 }
 
@@ -549,27 +624,17 @@ if command -v xrandr >/dev/null 2>&1; then
   xrandr --auto 2>/dev/null || true
 fi
 if command -v xsetroot >/dev/null 2>&1; then
-  xsetroot -solid "#ffffff" 2>/dev/null || true
+  xsetroot -solid "#f1f5f9" 2>/dev/null || true
 fi
 if command -v setxkbmap >/dev/null 2>&1; then
   setxkbmap -model abnt2 -layout br 2>/dev/null || setxkbmap br 2>/dev/null || true
 fi
 
-# Encerrar eventuais daemons externos de economia de energia/proteção de tela
-pkill -f xfce4-power-manager 2>/dev/null || true
-pkill -f xscreensaver 2>/dev/null || true
-pkill -f light-locker 2>/dev/null || true
+# Encerrar eventuais daemons externos de economia de energia/proteção de tela em background
+(pkill -f xfce4-power-manager 2>/dev/null || true; pkill -f xscreensaver 2>/dev/null || true; pkill -f light-locker 2>/dev/null || true) &
 
-# Impedir enrolamento (shade/rollup) de janela no xfwm4 e remover botão S
-if command -v xfconf-query >/dev/null 2>&1; then
-  xfconf-query -c xfwm4 -p /general/mousewheel_rollup -n -t bool -s false 2>/dev/null || xfconf-query -c xfwm4 -p /general/mousewheel_rollup -s false 2>/dev/null || true
-  xfconf-query -c xfwm4 -p /general/button_layout -n -t string -s "|HMC" 2>/dev/null || xfconf-query -c xfwm4 -p /general/button_layout -s "|HMC" 2>/dev/null || true
-  xfconf-query -c xfwm4 -p /general/double_click_action -n -t string -s "maximize" 2>/dev/null || xfconf-query -c xfwm4 -p /general/double_click_action -s "maximize" 2>/dev/null || true
-fi
-
-# Gerenciador de janelas mínimo xfwm4 (sem painéis, sem rodapés externos)
+# Gerenciador de janelas mínimo xfwm4 (sem painéis, abertura imediata)
 xfwm4 --compositor=off >/dev/null 2>&1 &
-(sleep 1 && DISPLAY=:0 xsetroot -solid "#ffffff" >/dev/null 2>&1) &
 
 exec /usr/bin/python3 /opt/xiqi/app/xiqi-browser.py
 EOF
@@ -635,21 +700,19 @@ respawn_max="0"
 
 export PORT="${PORT:-3000}"
 export XIQI_CONFIG_DIR="${XIQI_CONFIG_DIR:-/opt/xiqi/config}"
-if [ -f "/opt/xiqi/app/.env" ]; then
-  set -a
-  . "/opt/xiqi/app/.env"
-  set +a
-fi
-if [ -f "${XIQI_CONFIG_DIR}/xiqi.env" ]; then
-  set -a
-  . "${XIQI_CONFIG_DIR}/xiqi.env"
-  set +a
-fi
+for ef in /opt/xiqi/app/.env "${XIQI_CONFIG_DIR}/xiqi.env" "${XIQI_CONFIG_DIR}/.env"; do
+  if [ -f "${ef}" ] && [ -z "${XIQI_AI_KEY:-}" ]; then
+    PARSED_KEY="$(awk -F= '/^[[:space:]]*(export[[:space:]]+)?XIQI_AI_KEY[[:space:]]*=/{gsub(/\r/,""); sub(/^[^=]*=/,""); gsub(/^[[:space:]]+|[[:space:]]+$/,""); if((substr($0,1,1)=="\""&&substr($0,length($0),1)=="\"")||(substr($0,1,1)=="\047"&&substr($0,length($0),1)=="\047")){$0=substr($0,2,length($0)-2)} if($0!=""){val=$0}} END{if(val!="")print val}' "${ef}" 2>/dev/null || true)"
+    if [ -n "${PARSED_KEY}" ]; then
+      XIQI_AI_KEY="${PARSED_KEY}"
+    fi
+  fi
+done
 export XIQI_AI_KEY="${XIQI_AI_KEY:-}"
 
 depend() {
-  need localmount net
-  after loopback net
+  need localmount
+  after localmount
 }
 
 start_pre() {
@@ -697,8 +760,8 @@ description="XIQI OS Direct Browser Display (Corporação Engecema)"
 pidfile="/run/xiqi-display.pid"
 
 depend() {
-  need localmount net
-  after net xiqios
+  need localmount
+  after localmount xiqios
 }
 
 start() {
@@ -706,18 +769,10 @@ start() {
   mkdir -p /opt/xiqi/logs /tmp/.X11-unix
   chmod 1777 /tmp/.X11-unix
   rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 2>/dev/null || true
-  chown xiqi:xiqi /home/xiqi /home/xiqi/.xinitrc 2>/dev/null || true
+  chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true
+  chmod 755 /home/xiqi/.xinitrc 2>/dev/null || true
   touch /opt/xiqi/logs/xiqi-display.log
   chown xiqi:xiqi /opt/xiqi/logs/xiqi-display.log 2>/dev/null || true
-
-  i=0
-  while [ "$i" -lt 20 ]; do
-    if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 1 "http://127.0.0.1:3000/api/system" >/dev/null 2>&1; then
-      break
-    fi
-    i=$((i + 1))
-    sleep 0.5
-  done
 
   if command -v chvt >/dev/null 2>&1; then
     chvt 7 2>/dev/null || true
@@ -772,7 +827,7 @@ EOF
   cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqios.service"
 [Unit]
 Description=XIQI OS Corporate Server (Corporação Engecema)
-After=local-fs.target network.target
+After=local-fs.target
 
 [Service]
 Type=simple
@@ -792,9 +847,8 @@ EOF
   cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-display.service"
 [Unit]
 Description=XIQI OS Direct Browser Display (Corporação Engecema)
-After=network-online.target xiqios.service
-Wants=network-online.target xiqios.service
-Conflicts=getty@tty1.service
+After=local-fs.target xiqios.service
+Wants=xiqios.service
 
 [Service]
 Type=simple
@@ -813,7 +867,7 @@ Environment=WEBKIT_FORCE_SANDBOX=0
 Environment=LIBGL_ALWAYS_SOFTWARE=1
 Environment=XIQI_URL=http://127.0.0.1:3000
 Environment=XIQI_FULLSCREEN=1
-ExecStartPre=-/bin/sh -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; command -v chvt >/dev/null 2>&1 && chvt 7 || true'
+ExecStartPre=+-/bin/sh -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true; chmod 755 /home/xiqi/.xinitrc 2>/dev/null || true; command -v chvt >/dev/null 2>&1 && chvt 7 || true'
 ExecStart=/usr/bin/startx /home/xiqi/.xinitrc -- :0 vt7 -nolisten tcp -s 0 -dpms
 Restart=always
 RestartSec=2
@@ -846,20 +900,52 @@ EOF
   configure_anti_suspend_and_power_lock "${ROOT_PREFIX}"
   configure_https_reverse_proxy "${ROOT_PREFIX}"
   configure_fast_network_and_ntp "${ROOT_PREFIX}"
+
+  # Sincronizar permissões finais do usuário xiqi (.xinitrc, .config, .pki) e preservar serviços locais
+  if [ -z "${ROOT_PREFIX}" ]; then
+    chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true
+    chmod 755 /home/xiqi/.xinitrc 2>/dev/null || true
+    if [ -x /etc/init.d/areiapreta ] || [ -f /etc/systemd/system/areiapreta.service ] || [ -f /lib/systemd/system/areiapreta.service ]; then
+      echo "Serviço local areiapreta detectado e preservado intacto."
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+    chroot "${ROOT_PREFIX}" chown -R xiqi:xiqi /home/xiqi 2>/dev/null || true
+    chmod 755 "${ROOT_PREFIX}/home/xiqi/.xinitrc" 2>/dev/null || true
+  fi
 }
 
 configure_silent_boot_and_fsck() {
   ROOT_PREFIX="${1:-}"
-  QUIET_OPTS="quiet loglevel=0 console=tty3 vt.global_cursor_default=0 rd.udev.log_level=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer consoleblank=0 acpi_sleep=nonvs nohz=off nohibernate"
+  QUIET_OPTS="quiet loglevel=0 console=tty3 vt.global_cursor_default=0 rd.udev.log_level=0 udev.log_level=0 udev.log_priority=0 systemd.show_status=false rd.systemd.show_status=false fsck.mode=skip fastboot fbcon=nodefer consoleblank=0 logo.nologo acpi_sleep=nonvs nohz=off nohibernate"
 
   mkdir -p "${ROOT_PREFIX}/etc/conf.d" "${ROOT_PREFIX}/etc/default" "${ROOT_PREFIX}/boot"
 
   # Suprimir logs e barras de fsck na inicialização e no reinício
   cat << 'EOF' > "${ROOT_PREFIX}/etc/conf.d/fsck"
-fsck_args="-y -T -C 0"
+fsck_args="-a -T"
 rc_fsck_quiet="YES"
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/conf.d/fsck"
+
+  if [ -f "${ROOT_PREFIX}/etc/fstab" ]; then
+    awk '
+      /^[[:space:]]*#/ || NF < 6 { print; next }
+      $3 ~ /^(ext2|ext3|ext4|vfat)$/ { $6 = "0" }
+      { print }
+    ' "${ROOT_PREFIX}/etc/fstab" > "${ROOT_PREFIX}/etc/fstab.xiqi.tmp" && \
+    mv "${ROOT_PREFIX}/etc/fstab.xiqi.tmp" "${ROOT_PREFIX}/etc/fstab" && \
+    chmod 644 "${ROOT_PREFIX}/etc/fstab"
+  fi
+
+  # Remover serviço fsck do runlevel boot no OpenRC para eliminar logs e2fsck em /dev/sda3 e /dev/sda1
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if command -v rc-update >/dev/null 2>&1; then
+      rc-update del fsck boot 2>/dev/null || true
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+    chroot "${ROOT_PREFIX}" rc-update del fsck boot 2>/dev/null || true
+  fi
+  rm -f "${ROOT_PREFIX}/etc/runlevels/boot/fsck" "${ROOT_PREFIX}/boot/extlinux.conf.old" 2>/dev/null || true
 
   # Instalar e configurar GRUB 100% silencioso (substituindo extlinux/SYSLINUX)
   resolve_root_partition() {
@@ -966,8 +1052,8 @@ EOF
       }
       in_entry && /^[[:space:]]*\}/ { in_entry=0; exit }
       in_entry {
-        if ($0 ~ /vmlinuz-lts/) has_kern=1
-        if ($0 ~ /initramfs-lts/) has_initrd=1
+        if ($0 ~ /vmlinuz/) has_kern=1
+        if ($0 ~ /initramfs|initrd/) has_initrd=1
         if (req_uuid == "" || index($0, "root=UUID=" req_uuid) > 0) has_uuid=1
       }
       END {
@@ -978,7 +1064,8 @@ EOF
   }
 
   ROOT_PART="$(resolve_root_partition "${ROOT_PREFIX}" || true)"
-  DISK_DEV="$(resolve_parent_disk "${ROOT_PART}" || true)"
+  BOOT_PART="$(resolve_root_partition "${ROOT_PREFIX}/boot" || true)"
+  DISK_DEV="$(resolve_parent_disk "${ROOT_PART}" || resolve_parent_disk "${BOOT_PART}" || true)"
   ROOT_UUID="$(resolve_root_uuid "${ROOT_PREFIX}" "${ROOT_PART}")"
   if [ -z "${DISK_DEV}" ] && [ -z "${ROOT_PREFIX}" ] && [ -b /dev/sda ]; then
     DISK_DEV="/dev/sda"
@@ -1052,7 +1139,7 @@ EOF
           GRUB_INSTALL_OK="true"
         fi
       else
-        if grub-install --target=i386-pc --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
+        if grub-install --target=i386-pc --force --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
           GRUB_INSTALL_OK="true"
         fi
       fi
@@ -1063,7 +1150,7 @@ EOF
             GRUB_INSTALL_OK="true"
           fi
         else
-          if chroot "${ROOT_PREFIX}" grub-install --target=i386-pc --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
+          if chroot "${ROOT_PREFIX}" grub-install --target=i386-pc --force --boot-directory=/boot "${DISK_DEV}" >/dev/null 2>&1; then
             GRUB_INSTALL_OK="true"
           fi
         fi
@@ -1074,7 +1161,7 @@ EOF
             GRUB_INSTALL_OK="true"
           fi
         else
-          if grub-install --target=i386-pc --boot-directory="${ROOT_PREFIX}/boot" "${DISK_DEV}" >/dev/null 2>&1; then
+          if grub-install --target=i386-pc --force --boot-directory="${ROOT_PREFIX}/boot" "${DISK_DEV}" >/dev/null 2>&1; then
             GRUB_INSTALL_OK="true"
           fi
         fi
@@ -1082,14 +1169,21 @@ EOF
     fi
   fi
 
+  GRUB_MKCONFIG_OK="false"
   if [ -z "${ROOT_PREFIX}" ]; then
     if command -v grub-mkconfig >/dev/null 2>&1; then
-      grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true
+      if grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1; then
+        GRUB_MKCONFIG_OK="true"
+      fi
     elif command -v update-grub >/dev/null 2>&1; then
-      update-grub >/dev/null 2>&1 || true
+      if update-grub >/dev/null 2>&1; then
+        GRUB_MKCONFIG_OK="true"
+      fi
     fi
   elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
-    chroot "${ROOT_PREFIX}" sh -c 'if command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 || true; elif command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1 || true; fi' || true
+    if chroot "${ROOT_PREFIX}" sh -c 'if command -v grub-mkconfig >/dev/null 2>&1; then grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1; elif command -v update-grub >/dev/null 2>&1; then update-grub >/dev/null 2>&1; else exit 1; fi'; then
+      GRUB_MKCONFIG_OK="true"
+    fi
   fi
 
   cleanup_silent_chroot_mounts
@@ -1097,7 +1191,6 @@ EOF
   GRUB_CFG="${ROOT_PREFIX}/boot/grub/grub.cfg"
   BOOT_PREFIX="/boot"
   BOOT_SEARCH_UUID="${ROOT_UUID}"
-  BOOT_PART="$(resolve_root_partition "${ROOT_PREFIX}/boot" || true)"
   if [ -n "${BOOT_PART}" ] && [ -n "${ROOT_PART}" ] && [ "${BOOT_PART}" != "${ROOT_PART}" ]; then
     BOOT_PREFIX=""
     if command -v blkid >/dev/null 2>&1; then
@@ -1105,7 +1198,22 @@ EOF
     fi
   fi
 
-  if [ -f "${ROOT_PREFIX}/boot/vmlinuz-lts" ] && [ -f "${ROOT_PREFIX}/boot/initramfs-lts" ] && [ -n "${ROOT_UUID}" ]; then
+  DETECTED_KERN=""
+  for k_cand in "${ROOT_PREFIX}/boot/vmlinuz-lts" "${ROOT_PREFIX}/boot"/vmlinuz-*; do
+    if [ -f "${k_cand}" ]; then
+      DETECTED_KERN="$(basename "${k_cand}")"
+      break
+    fi
+  done
+  DETECTED_INITRD=""
+  for i_cand in "${ROOT_PREFIX}/boot/initramfs-lts" "${ROOT_PREFIX}/boot"/initramfs-* "${ROOT_PREFIX}/boot"/initrd*; do
+    if [ -f "${i_cand}" ]; then
+      DETECTED_INITRD="$(basename "${i_cand}")"
+      break
+    fi
+  done
+
+  if [ -n "${DETECTED_KERN}" ] && [ -n "${DETECTED_INITRD}" ] && [ -n "${ROOT_UUID}" ]; then
     if ! verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
       cat << EOF > "${GRUB_CFG}"
 set default="0"
@@ -1117,8 +1225,8 @@ insmod ext2
 search --no-floppy --fs-uuid --set=root ${BOOT_SEARCH_UUID}
 
 menuentry 'XIQI OS v1.0 - Engecema' {
-  linux ${BOOT_PREFIX}/vmlinuz-lts root=UUID=${ROOT_UUID} ro ${QUIET_OPTS}
-  initrd ${BOOT_PREFIX}/initramfs-lts
+  linux ${BOOT_PREFIX}/${DETECTED_KERN} root=UUID=${ROOT_UUID} ro ${QUIET_OPTS}
+  initrd ${BOOT_PREFIX}/${DETECTED_INITRD}
 }
 EOF
       chmod 644 "${GRUB_CFG}"
@@ -1135,13 +1243,35 @@ EOF
     GRUB_CORE_OK="false"
   fi
 
-  if [ "${GRUB_CORE_OK}" = "true" ] && verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
-    for ext_res in "${ROOT_PREFIX}/boot/ldlinux.sys" "${ROOT_PREFIX}/boot/ldlinux.c32" "${ROOT_PREFIX}/boot/extlinux.conf" "${ROOT_PREFIX}/etc/update-extlinux.conf"; do
+  if [ "${GRUB_INSTALL_OK}" = "true" ] && [ "${GRUB_MKCONFIG_OK}" = "true" ] && [ "${GRUB_CORE_OK}" = "true" ] && verify_grub_default_entry "${GRUB_CFG}" "${ROOT_UUID}"; then
+    for ext_res in "${ROOT_PREFIX}/boot/ldlinux.sys" "${ROOT_PREFIX}/boot/ldlinux.c32" "${ROOT_PREFIX}/boot/extlinux.conf" "${ROOT_PREFIX}/boot/syslinux.cfg" "${ROOT_PREFIX}/etc/update-extlinux.conf"; do
       if [ -e "${ext_res}" ]; then
         chattr -i "${ext_res}" 2>/dev/null || true
         rm -f "${ext_res}"
       fi
     done
+  elif [ -f "${ROOT_PREFIX}/boot/extlinux.conf" ]; then
+    awk '
+      BEGIN { has_prompt=0; has_timeout=0; n=0 }
+      /^[[:space:]]*[Mm][Ee][Nn][Uu][[:space:]]+/ { next }
+      /^[[:space:]]*[Pp][Rr][Oo][Mm][Pp][Tt][[:space:]]+/ { lines[n++]="PROMPT 0"; has_prompt=1; next }
+      /^[[:space:]]*[Tt][Ii][Mm][Ee][Oo][Uu][Tt][[:space:]]+/ { lines[n++]="TIMEOUT 0"; has_timeout=1; next }
+      /^[[:space:]]*[Aa][Pp][Pp][Ee][Nn][Dd][[:space:]]+/ {
+        line = $0
+        if (line !~ /(^|[[:space:]])quiet([[:space:]]|$)/) line = line " quiet"
+        if (line !~ /(^|[[:space:]])loglevel=/) line = line " loglevel=0"
+        lines[n++] = line
+        next
+      }
+      { lines[n++] = $0 }
+      END {
+        if (!has_prompt) print "PROMPT 0"
+        if (!has_timeout) print "TIMEOUT 0"
+        for (i = 0; i < n; i++) print lines[i]
+      }
+    ' "${ROOT_PREFIX}/boot/extlinux.conf" > "${ROOT_PREFIX}/boot/extlinux.conf.xiqi.tmp" && \
+    mv "${ROOT_PREFIX}/boot/extlinux.conf.xiqi.tmp" "${ROOT_PREFIX}/boot/extlinux.conf" && \
+    chmod 644 "${ROOT_PREFIX}/boot/extlinux.conf"
   fi
 }
 
@@ -1337,14 +1467,15 @@ EOF
       done
     fi
 
-    if [ ! -f "${CERT_DIR}/xiqi-ca.crt" ] || [ ! -f "${CERT_DIR}/xiqi-ca.key" ]; then
+    if [ ! -s "${CERT_DIR}/xiqi-ca.crt" ] || [ ! -s "${CERT_DIR}/xiqi-ca.key" ]; then
       openssl genrsa -out "${CERT_DIR}/xiqi-ca.key" 2048 >/dev/null 2>&1
       openssl req -x509 -new -nodes -key "${CERT_DIR}/xiqi-ca.key" -sha256 -days 3650 \
         -subj "/O=Corporacao Engecema/OU=XIQI OS/CN=XIQI OS Local Root CA" \
         -out "${CERT_DIR}/xiqi-ca.crt" >/dev/null 2>&1
     fi
 
-    cat << EOF > "${CERT_DIR}/xiqios-san.cnf"
+    if [ ! -s "${CERT_DIR}/xiqios.crt" ] || [ ! -s "${CERT_DIR}/xiqios.key" ]; then
+      cat << EOF > "${CERT_DIR}/xiqios-san.cnf"
 [req]
 distinguished_name = req_distinguished_name
 req_extensions = v3_req
@@ -1361,49 +1492,56 @@ extendedKeyUsage = serverAuth
 subjectAltName = ${SAN_LIST}
 EOF
 
-    openssl genrsa -out "${CERT_DIR}/xiqios.key" 2048 >/dev/null 2>&1
-    openssl req -new -key "${CERT_DIR}/xiqios.key" -out "${CERT_DIR}/xiqios.csr" \
-      -config "${CERT_DIR}/xiqios-san.cnf" >/dev/null 2>&1
-    openssl x509 -req -in "${CERT_DIR}/xiqios.csr" \
-      -CA "${CERT_DIR}/xiqi-ca.crt" -CAkey "${CERT_DIR}/xiqi-ca.key" -CAcreateserial \
-      -out "${CERT_DIR}/xiqios.crt" -days 3650 -sha256 \
-      -extensions v3_req -extfile "${CERT_DIR}/xiqios-san.cnf" >/dev/null 2>&1
-    rm -f "${CERT_DIR}/xiqios.csr"
+      openssl genrsa -out "${CERT_DIR}/xiqios.key" 2048 >/dev/null 2>&1
+      openssl req -new -key "${CERT_DIR}/xiqios.key" -out "${CERT_DIR}/xiqios.csr" \
+        -config "${CERT_DIR}/xiqios-san.cnf" >/dev/null 2>&1
+      openssl x509 -req -in "${CERT_DIR}/xiqios.csr" \
+        -CA "${CERT_DIR}/xiqi-ca.crt" -CAkey "${CERT_DIR}/xiqi-ca.key" -CAcreateserial \
+        -out "${CERT_DIR}/xiqios.crt" -days 3650 -sha256 \
+        -extensions v3_req -extfile "${CERT_DIR}/xiqios-san.cnf" >/dev/null 2>&1
+      rm -f "${CERT_DIR}/xiqios.csr"
+    fi
     chmod 600 "${CERT_DIR}/xiqi-ca.key" "${CERT_DIR}/xiqios.key" 2>/dev/null || true
-    chmod 644 "${CERT_DIR}/xiqi-ca.crt" "${CERT_DIR}/xiqios.crt" "${CERT_DIR}/xiqios-san.cnf" 2>/dev/null || true
+    chmod 644 "${CERT_DIR}/xiqi-ca.crt" "${CERT_DIR}/xiqios.crt" 2>/dev/null || true
+    if [ -f "${CERT_DIR}/xiqios-san.cnf" ]; then
+      chmod 644 "${CERT_DIR}/xiqios-san.cnf" 2>/dev/null || true
+    fi
 
     # Instalar CA raiz confiável no sistema e no banco NSS do usuário xiqi
-    if [ -d "${ROOT_PREFIX}/usr/local/share/ca-certificates" ] || [ -z "${ROOT_PREFIX}" ]; then
-      mkdir -p "${ROOT_PREFIX}/usr/local/share/ca-certificates"
-      cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/usr/local/share/ca-certificates/xiqi-ca.crt"
-    fi
-    if [ -d "${ROOT_PREFIX}/etc/pki/ca-trust/source/anchors" ]; then
-      cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/etc/pki/ca-trust/source/anchors/xiqi-ca.crt"
-    fi
-    if [ -d "${ROOT_PREFIX}/etc/ssl/certs" ]; then
-      cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/etc/ssl/certs/xiqi-ca.pem"
-    fi
+    if [ -s "${CERT_DIR}/xiqi-ca.crt" ]; then
+      if [ -d "${ROOT_PREFIX}/usr/local/share/ca-certificates" ] || [ -z "${ROOT_PREFIX}" ]; then
+        mkdir -p "${ROOT_PREFIX}/usr/local/share/ca-certificates"
+        cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/usr/local/share/ca-certificates/xiqi-ca.crt"
+      fi
+      if [ -d "${ROOT_PREFIX}/etc/pki/ca-trust/source/anchors" ]; then
+        cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/etc/pki/ca-trust/source/anchors/xiqi-ca.crt"
+      fi
+      if [ -d "${ROOT_PREFIX}/etc/ssl/certs" ]; then
+        cp -f "${CERT_DIR}/xiqi-ca.crt" "${ROOT_PREFIX}/etc/ssl/certs/xiqi-ca.pem"
+      fi
 
-    if [ -z "${ROOT_PREFIX}" ]; then
-      if command -v update-ca-certificates >/dev/null 2>&1; then
-        update-ca-certificates >/dev/null 2>&1 || true
-      elif command -v update-ca-trust >/dev/null 2>&1; then
-        update-ca-trust extract >/dev/null 2>&1 || true
+      if [ -z "${ROOT_PREFIX}" ]; then
+        if command -v update-ca-certificates >/dev/null 2>&1; then
+          update-ca-certificates >/dev/null 2>&1 || true
+        elif command -v update-ca-trust >/dev/null 2>&1; then
+          update-ca-trust extract >/dev/null 2>&1 || true
+        fi
+        if command -v certutil >/dev/null 2>&1; then
+          mkdir -p /home/xiqi/.pki/nssdb
+          certutil -N --empty-password -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
+          certutil -D -n "XIQI OS Local Root CA" -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
+          certutil -A -t "C,," -n "XIQI OS Local Root CA" -i "${CERT_DIR}/xiqi-ca.crt" -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
+          chown -R xiqi:xiqi /home/xiqi/.pki 2>/dev/null || true
+        fi
+      elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
+        chroot "${ROOT_PREFIX}" sh -c 'command -v update-ca-certificates >/dev/null 2>&1 && update-ca-certificates >/dev/null 2>&1 || true' || true
       fi
-      if command -v certutil >/dev/null 2>&1; then
-        mkdir -p /home/xiqi/.pki/nssdb
-        certutil -N --empty-password -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
-        certutil -D -n "XIQI OS Local Root CA" -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
-        certutil -A -t "C,," -n "XIQI OS Local Root CA" -i "${CERT_DIR}/xiqi-ca.crt" -d sql:/home/xiqi/.pki/nssdb >/dev/null 2>&1 || true
-        chown -R xiqi:xiqi /home/xiqi/.pki 2>/dev/null || true
-      fi
-    elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/bin/sh" ]; then
-      chroot "${ROOT_PREFIX}" sh -c 'command -v update-ca-certificates >/dev/null 2>&1 && update-ca-certificates >/dev/null 2>&1 || true' || true
     fi
   fi
 
-  # Proxy reverso HTTPS nativo em Node.js (porta 80 -> 443 e 443 -> 127.0.0.1:3000) como fallback universal
-  cat << 'EOF' > "${XIQI_BASE}/bin/xiqi-https-proxy.js"
+  # Proxy reverso HTTPS nativo em Node.js (preserva arquivo local já existente)
+  if [ ! -s "${XIQI_BASE}/bin/xiqi-https-proxy.js" ]; then
+    cat << 'EOF' > "${XIQI_BASE}/bin/xiqi-https-proxy.js"
 'use strict';
 const fs = require('fs');
 const http = require('http');
@@ -1492,10 +1630,12 @@ redirectServer.requestTimeout = 15000;
 redirectServer.headersTimeout = 10000;
 redirectServer.listen(80, '0.0.0.0');
 EOF
-  chmod 755 "${XIQI_BASE}/bin/xiqi-https-proxy.js"
+    chmod 755 "${XIQI_BASE}/bin/xiqi-https-proxy.js"
+  fi
 
   mkdir -p "${ROOT_PREFIX}/etc/init.d" "${ROOT_PREFIX}/etc/systemd/system"
-  cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqi-https"
+  if [ ! -s "${ROOT_PREFIX}/etc/init.d/xiqi-https" ]; then
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqi-https"
 #!/sbin/openrc-run
 
 name="xiqi-https"
@@ -1512,9 +1652,11 @@ depend() {
   after net xiqios
 }
 EOF
-  chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqi-https"
+    chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqi-https"
+  fi
 
-  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-https.service"
+  if [ ! -s "${ROOT_PREFIX}/etc/systemd/system/xiqi-https.service" ]; then
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-https.service"
 [Unit]
 Description=XIQI OS Local HTTPS Reverse Proxy (443 -> 3000)
 After=network.target xiqios.service
@@ -1529,9 +1671,12 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 EOF
+  fi
 
   PROXY_ENGINE="node"
-  if command -v caddy >/dev/null 2>&1 || [ -x "${ROOT_PREFIX}/usr/bin/caddy" ] || [ -x "${ROOT_PREFIX}/usr/sbin/caddy" ]; then
+  if [ -s "${XIQI_BASE}/bin/xiqi-https-proxy.js" ] && { [ -x "${ROOT_PREFIX}/etc/init.d/xiqi-https" ] || [ -s "${ROOT_PREFIX}/etc/systemd/system/xiqi-https.service" ]; }; then
+    PROXY_ENGINE="node"
+  elif command -v caddy >/dev/null 2>&1 || [ -x "${ROOT_PREFIX}/usr/bin/caddy" ] || [ -x "${ROOT_PREFIX}/usr/sbin/caddy" ]; then
     PROXY_ENGINE="caddy"
     mkdir -p "${ROOT_PREFIX}/etc/caddy"
     cat << 'EOF' > "${ROOT_PREFIX}/etc/caddy/Caddyfile"
@@ -1595,7 +1740,9 @@ server {
         rc-service nginx restart 2>/dev/null || true
       else
         rc-update add xiqi-https default 2>/dev/null || true
-        rc-service xiqi-https restart 2>/dev/null || true
+        if ! rc-service xiqi-https status >/dev/null 2>&1; then
+          rc-service xiqi-https start 2>/dev/null || true
+        fi
       fi
     elif command -v systemctl >/dev/null 2>&1; then
       systemctl daemon-reload 2>/dev/null || true
@@ -1607,7 +1754,9 @@ server {
         systemctl restart nginx 2>/dev/null || true
       else
         systemctl enable xiqi-https.service 2>/dev/null || true
-        systemctl restart xiqi-https.service 2>/dev/null || true
+        if ! systemctl is-active --quiet xiqi-https.service 2>/dev/null; then
+          systemctl start xiqi-https.service 2>/dev/null || true
+        fi
       fi
     fi
   elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
@@ -1621,17 +1770,238 @@ server {
   fi
 }
 
+configure_xiqi_vpn() {
+  ROOT_PREFIX="${1:-}"
+  mkdir -p "${ROOT_PREFIX}/usr/local/bin" "${ROOT_PREFIX}/etc/init.d" "${ROOT_PREFIX}/etc/conf.d" "${ROOT_PREFIX}/etc/systemd/system" "${ROOT_PREFIX}/opt/xiqi/logs"
+
+  VPN_CLI_REL=""
+  for cli_cand in /usr/bin/tailscale /usr/sbin/tailscale /usr/local/bin/tailscale /bin/tailscale; do
+    if [ -x "${ROOT_PREFIX}${cli_cand}" ]; then
+      VPN_CLI_REL="${cli_cand}"
+      break
+    fi
+  done
+
+  VPN_DAEMON_REL=""
+  for d_cand in /usr/sbin/tailscaled /usr/bin/tailscaled /usr/local/sbin/tailscaled /sbin/tailscaled; do
+    if [ -x "${ROOT_PREFIX}${d_cand}" ]; then
+      VPN_DAEMON_REL="${d_cand}"
+      break
+    fi
+  done
+
+  if [ -z "${VPN_CLI_REL}" ] && [ -z "${VPN_DAEMON_REL}" ] && [ ! -f "${ROOT_PREFIX}/etc/init.d/tailscale" ] && [ ! -f "${ROOT_PREFIX}/etc/init.d/xiqi-vpn" ]; then
+    return 0
+  fi
+
+  if [ -n "${VPN_CLI_REL}" ]; then
+    ln -sf "${VPN_CLI_REL}" "${ROOT_PREFIX}/usr/local/bin/xiqi-vpn"
+  fi
+
+  # Aplicar --accept-dns=false antes de migrar/reiniciar o serviço
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if [ -x /usr/local/bin/xiqi-vpn ]; then
+      /usr/local/bin/xiqi-vpn set --accept-dns=false >/dev/null 2>&1 || true
+    elif [ -n "${VPN_CLI_REL}" ] && [ -x "${VPN_CLI_REL}" ]; then
+      "${VPN_CLI_REL}" set --accept-dns=false >/dev/null 2>&1 || true
+    fi
+  fi
+
+  # Migrar opções legadas para /etc/conf.d/xiqi-vpn preservando estado do túnel
+  if [ ! -f "${ROOT_PREFIX}/etc/conf.d/xiqi-vpn" ]; then
+    MIGRATED_OPTS=""
+    if [ -f "${ROOT_PREFIX}/etc/conf.d/tailscale" ]; then
+      MIGRATED_OPTS="$(awk -F= '/^[[:space:]]*(TAILSCALED_OPTS|tailscaled_opts|ARGS|command_args)=/{sub(/^[^=]*=/,""); gsub(/[\r\047"]/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") { print; exit }}' "${ROOT_PREFIX}/etc/conf.d/tailscale" 2>/dev/null || true)"
+    fi
+    cat << EOF > "${ROOT_PREFIX}/etc/conf.d/xiqi-vpn"
+# Configuração encapsulada XIQI VPN
+XIQI_VPN_OPTS="${MIGRATED_OPTS}"
+EOF
+    chmod 644 "${ROOT_PREFIX}/etc/conf.d/xiqi-vpn"
+  fi
+
+  # Parar e remover completamente referências ao serviço e logs legados
+  if [ -z "${ROOT_PREFIX}" ]; then
+    if command -v rc-service >/dev/null 2>&1 && [ -f /etc/init.d/tailscale ]; then
+      rc-service tailscale stop >/dev/null 2>&1 || true
+    fi
+    if [ -f /etc/init.d/tailscale ] && command -v pkill >/dev/null 2>&1; then
+      pkill -x tailscaled >/dev/null 2>&1 || true
+    fi
+    if command -v rc-update >/dev/null 2>&1; then
+      for rl in default boot sysinit shutdown; do
+        rc-update del tailscale "${rl}" >/dev/null 2>&1 || true
+      done
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl stop tailscaled.service >/dev/null 2>&1 || true
+      systemctl disable tailscaled.service >/dev/null 2>&1 || true
+      systemctl mask tailscaled.service >/dev/null 2>&1 || true
+    fi
+  elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+    chroot "${ROOT_PREFIX}" sh -c 'for rl in default boot sysinit shutdown; do rc-update del tailscale "${rl}" >/dev/null 2>&1 || true; done' || true
+  fi
+
+  rm -f \
+    "${ROOT_PREFIX}/etc/init.d/tailscale" \
+    "${ROOT_PREFIX}/etc/conf.d/tailscale" \
+    "${ROOT_PREFIX}/etc/logrotate.d/tailscale" \
+    "${ROOT_PREFIX}/var/log/tailscale"* \
+    "${ROOT_PREFIX}/run/tailscale"*.pid 2>/dev/null || true
+
+  if [ -n "${VPN_DAEMON_REL}" ]; then
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqi-vpn"
+#!/sbin/openrc-run
+
+name="xiqi-vpn"
+description="XIQI OS Encrypted VPN Service (Corporação Engecema)"
+
+[ -f /etc/conf.d/xiqi-vpn ] && . /etc/conf.d/xiqi-vpn
+
+resolve_vpn_daemon() {
+  for d in /usr/sbin/tailscaled /usr/bin/tailscaled /usr/local/sbin/tailscaled /sbin/tailscaled; do
+    if [ -x "$d" ]; then
+      echo "$d"
+      return 0
+    fi
+  done
+  return 1
+}
+
+command="$(resolve_vpn_daemon)"
+command_args="${XIQI_VPN_OPTS:-}"
+supervisor="supervise-daemon"
+pidfile="/run/xiqi-vpn.pid"
+output_log="/opt/xiqi/logs/xiqi-vpn.log"
+error_log="/opt/xiqi/logs/xiqi-vpn.log"
+respawn_delay="2"
+respawn_max="0"
+
+depend() {
+  need localmount net
+  after net xiqi-net
+}
+
+start_pre() {
+  mkdir -p /opt/xiqi/logs /var/run/tailscale /var/lib/tailscale
+  touch /opt/xiqi/logs/xiqi-vpn.log
+  chmod 640 /opt/xiqi/logs/xiqi-vpn.log 2>/dev/null || true
+  return 0
+}
+
+start_post() {
+  (
+    _i=0
+    while [ "${_i}" -lt 8 ]; do
+      if /usr/local/bin/xiqi-vpn set --accept-dns=false >/dev/null 2>&1; then
+        break
+      fi
+      _i=$((_i + 1))
+      sleep 0.5 2>/dev/null || sleep 1
+    done
+    if grep -qE '^nameserver[[:space:]]+100\.100\.100\.100' /etc/resolv.conf 2>/dev/null; then
+      /opt/xiqi/bin/xiqi-net-ensure >/dev/null 2>&1 || true
+    fi
+  ) >/dev/null 2>&1 &
+  return 0
+}
+EOF
+    chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqi-vpn"
+
+    cat << EOF > "${ROOT_PREFIX}/etc/systemd/system/xiqi-vpn.service"
+[Unit]
+Description=XIQI OS Encrypted VPN Service (Corporação Engecema)
+After=network-online.target xiqi-net.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/conf.d/xiqi-vpn
+ExecStartPre=-/bin/sh -c 'mkdir -p /opt/xiqi/logs /var/run/tailscale /var/lib/tailscale'
+ExecStart=${VPN_DAEMON_REL} \$XIQI_VPN_OPTS
+ExecStartPost=-/bin/sh -c '/usr/local/bin/xiqi-vpn set --accept-dns=false >/dev/null 2>&1 || true'
+StandardOutput=append:/opt/xiqi/logs/xiqi-vpn.log
+StandardError=append:/opt/xiqi/logs/xiqi-vpn.log
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    if [ -z "${ROOT_PREFIX}" ]; then
+      if command -v rc-update >/dev/null 2>&1; then
+        rc-update add xiqi-vpn default >/dev/null 2>&1 || true
+        if command -v rc-service >/dev/null 2>&1; then
+          if rc-service xiqi-vpn status >/dev/null 2>&1; then
+            rc-service xiqi-vpn restart >/dev/null 2>&1 || true
+          else
+            rc-service xiqi-vpn start >/dev/null 2>&1 || true
+          fi
+        fi
+      elif command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+        systemctl enable --now xiqi-vpn.service >/dev/null 2>&1 || true
+      fi
+
+      if [ -x /usr/local/bin/xiqi-vpn ]; then
+        _try=0
+        while [ "${_try}" -lt 6 ]; do
+          if /usr/local/bin/xiqi-vpn set --accept-dns=false >/dev/null 2>&1; then
+            break
+          fi
+          _try=$((_try + 1))
+          sleep 0.5 2>/dev/null || sleep 1
+        done
+      fi
+    elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
+      chroot "${ROOT_PREFIX}" rc-update add xiqi-vpn default >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
 configure_fast_network_and_ntp() {
   ROOT_PREFIX="${1:-}"
-  mkdir -p "${ROOT_PREFIX}/etc/sysctl.d" "${ROOT_PREFIX}/etc/udhcpc" "${ROOT_PREFIX}/etc/dhcp" "${ROOT_PREFIX}/etc/NetworkManager/conf.d" "${ROOT_PREFIX}/etc/chrony" "${ROOT_PREFIX}/etc/systemd/timesyncd.conf.d"
+  mkdir -p "${ROOT_PREFIX}/etc/sysctl.d" "${ROOT_PREFIX}/etc/udhcpc" "${ROOT_PREFIX}/etc/dhcp" "${ROOT_PREFIX}/etc/network" "${ROOT_PREFIX}/etc/NetworkManager/conf.d" "${ROOT_PREFIX}/etc/chrony" "${ROOT_PREFIX}/etc/systemd/timesyncd.conf.d" "${ROOT_PREFIX}/etc/init.d" "${ROOT_PREFIX}/etc/systemd/system"
 
-  # 1. DNS rápido (1.1.1.1 e 8.8.8.8) sem atrasos de lookup IPv6
+  # 0. Encapsular serviço VPN corporativo (xiqi-vpn) e desativar sobrescrita de DNS (--accept-dns=false)
+  configure_xiqi_vpn "${ROOT_PREFIX}"
+
+  # 1. DNS rápido e garantido (remove possível symlink quebrado de systemd-resolved)
+  rm -f "${ROOT_PREFIX}/etc/resolv.conf" 2>/dev/null || true
   cat << 'EOF' > "${ROOT_PREFIX}/etc/resolv.conf"
 nameserver 1.1.1.1
 nameserver 8.8.8.8
-options timeout:1 attempts:2 single-request-reopen
+nameserver 9.9.9.9
+options timeout:2 attempts:3 single-request-reopen
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/resolv.conf"
+
+  # Garantir resolução glibc/glib via /etc/nsswitch.conf (files dns)
+  if [ -f "${ROOT_PREFIX}/etc/nsswitch.conf" ]; then
+    if grep -qE '^[[:space:]]*hosts:' "${ROOT_PREFIX}/etc/nsswitch.conf" 2>/dev/null; then
+      awk '
+        /^[[:space:]]*hosts:/ { print "hosts: files dns"; next }
+        { print }
+      ' "${ROOT_PREFIX}/etc/nsswitch.conf" > "${ROOT_PREFIX}/etc/nsswitch.conf.tmp" && \
+      mv "${ROOT_PREFIX}/etc/nsswitch.conf.tmp" "${ROOT_PREFIX}/etc/nsswitch.conf"
+    else
+      printf '\nhosts: files dns\n' >> "${ROOT_PREFIX}/etc/nsswitch.conf"
+    fi
+  else
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/nsswitch.conf"
+passwd: files
+group: files
+shadow: files
+hosts: files dns
+networks: files
+protocols: files
+services: files
+ethers: files
+rpc: files
+EOF
+  fi
+  chmod 644 "${ROOT_PREFIX}/etc/nsswitch.conf"
 
   cat << 'EOF' > "${ROOT_PREFIX}/etc/udhcpc/udhcpc.conf"
 RESOLV_CONF="no"
@@ -1642,6 +2012,17 @@ EOF
 supersede domain-name-servers 1.1.1.1, 8.8.8.8;
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/dhcp/dhclient.conf"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/resolvconf.conf"
+resolvconf=NO
+EOF
+  chmod 644 "${ROOT_PREFIX}/etc/resolvconf.conf"
+
+  if [ -f "${ROOT_PREFIX}/etc/dhcpcd.conf" ]; then
+    if ! grep -q 'nohook resolv.conf' "${ROOT_PREFIX}/etc/dhcpcd.conf" 2>/dev/null; then
+      printf '\nnohook resolv.conf\nstatic domain_name_servers=1.1.1.1 8.8.8.8\n' >> "${ROOT_PREFIX}/etc/dhcpcd.conf"
+    fi
+  fi
 
   cat << 'EOF' > "${ROOT_PREFIX}/etc/NetworkManager/conf.d/90-xiqi-dns.conf"
 [main]
@@ -1660,7 +2041,92 @@ net.ipv6.conf.default.disable_ipv6 = 1
 EOF
   chmod 644 "${ROOT_PREFIX}/etc/sysctl.d/99-xiqi-network.conf"
 
-  # 2. Sincronização de relógio NTP (chronyd / ntpd / timesyncd) para evitar atrasos em códigos 2FA
+  # Garantir configuração básica de rede e script rápido de DHCP/DNS no boot (sem travar GUI)
+  if [ ! -f "${ROOT_PREFIX}/etc/network/interfaces" ]; then
+    cat << 'EOF' > "${ROOT_PREFIX}/etc/network/interfaces"
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+EOF
+    chmod 644 "${ROOT_PREFIX}/etc/network/interfaces"
+  fi
+
+  cat << 'EOF' > "${ROOT_PREFIX}/opt/xiqi/bin/xiqi-net-ensure"
+#!/bin/sh
+if [ -x /usr/local/bin/xiqi-vpn ]; then
+  /usr/local/bin/xiqi-vpn set --accept-dns=false >/dev/null 2>&1 || true
+elif command -v xiqi-vpn >/dev/null 2>&1; then
+  xiqi-vpn set --accept-dns=false >/dev/null 2>&1 || true
+elif command -v tailscale >/dev/null 2>&1; then
+  tailscale set --accept-dns=false >/dev/null 2>&1 || true
+fi
+
+ensure_resolv() {
+  if [ -L /etc/resolv.conf ] || [ ! -s /etc/resolv.conf ] || grep -qE '^nameserver[[:space:]]+100\.100\.100\.100' /etc/resolv.conf 2>/dev/null || ! grep -qE '^nameserver[[:space:]]+(1\.1\.1\.1|8\.8\.8\.8)' /etc/resolv.conf 2>/dev/null; then
+    rm -f /etc/resolv.conf 2>/dev/null || true
+    printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 9.9.9.9\noptions timeout:2 attempts:3 single-request-reopen\n' > /etc/resolv.conf 2>/dev/null || true
+    chmod 644 /etc/resolv.conf 2>/dev/null || true
+  fi
+}
+
+ip link set lo up 2>/dev/null || ifconfig lo up 2>/dev/null || true
+ensure_resolv
+
+for iface_path in /sys/class/net/*; do
+  iface="$(basename "${iface_path}")"
+  case "${iface}" in
+    eth*|en*)
+      ip link set "${iface}" up 2>/dev/null || ifconfig "${iface}" up 2>/dev/null || true
+      if ! ip -4 addr show dev "${iface}" scope global 2>/dev/null | grep -q 'inet '; then
+        if command -v udhcpc >/dev/null 2>&1; then
+          udhcpc -i "${iface}" -b -q -R >/dev/null 2>&1 || true
+        elif command -v dhclient >/dev/null 2>&1; then
+          dhclient -nw "${iface}" >/dev/null 2>&1 || true
+        fi
+      fi
+      ;;
+  esac
+done
+
+ensure_resolv
+EOF
+  chmod 755 "${ROOT_PREFIX}/opt/xiqi/bin/xiqi-net-ensure"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/init.d/xiqi-net"
+#!/sbin/openrc-run
+name="xiqi-net"
+description="XIQI OS Fast Network & DNS Bootstrap"
+
+depend() {
+  need localmount
+  after localmount
+}
+
+start() {
+  ebegin "Configurando rede e DNS XIQI OS"
+  /opt/xiqi/bin/xiqi-net-ensure >/dev/null 2>&1 &
+  eend 0
+}
+EOF
+  chmod 755 "${ROOT_PREFIX}/etc/init.d/xiqi-net"
+
+  cat << 'EOF' > "${ROOT_PREFIX}/etc/systemd/system/xiqi-net.service"
+[Unit]
+Description=XIQI OS Fast Network and DNS Bootstrap
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/xiqi/bin/xiqi-net-ensure
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # 2. Sincronização de relógio NTP (chronyd / ntpd / timesyncd)
   CHRONY_CONF="server time.cloudflare.com iburst
 server time.google.com iburst
 pool pool.ntp.org iburst
@@ -1687,7 +2153,9 @@ EOF
 
   if [ -z "${ROOT_PREFIX}" ]; then
     sysctl -q -p /etc/sysctl.d/99-xiqi-network.conf 2>/dev/null || true
+    /opt/xiqi/bin/xiqi-net-ensure 2>/dev/null || true
     if command -v rc-update >/dev/null 2>&1; then
+      rc-update add xiqi-net default 2>/dev/null || true
       if [ -x /etc/init.d/chronyd ]; then
         rc-update add chronyd default 2>/dev/null || true
         rc-service chronyd restart 2>/dev/null || true
@@ -1696,6 +2164,8 @@ EOF
         rc-service ntpd restart 2>/dev/null || true
       fi
     elif command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload 2>/dev/null || true
+      systemctl enable xiqi-net.service 2>/dev/null || true
       if systemctl list-unit-files chronyd.service >/dev/null 2>&1; then
         systemctl enable --now chronyd.service 2>/dev/null || true
       elif systemctl list-unit-files chrony.service >/dev/null 2>&1; then
@@ -1709,6 +2179,7 @@ EOF
     fi
   elif command -v chroot >/dev/null 2>&1 && [ -x "${ROOT_PREFIX}/sbin/rc-update" ]; then
     chroot "${ROOT_PREFIX}" sh -c '
+      rc-update add xiqi-net default 2>/dev/null || true;
       if [ -x /etc/init.d/chronyd ]; then rc-update add chronyd default 2>/dev/null || true;
       elif [ -x /etc/init.d/ntpd ]; then rc-update add ntpd default 2>/dev/null || true; fi
     ' || true
@@ -1861,22 +2332,22 @@ EOF
     fi
   else
     if command -v chroot >/dev/null 2>&1 && [ -x "${MNT_DIR}/usr/sbin/grub-install" ]; then
-      if chroot "${MNT_DIR}" grub-install --target=i386-pc --boot-directory=/boot "${TARGET_DISK}" >/dev/null 2>&1; then
+      if chroot "${MNT_DIR}" grub-install --target=i386-pc --force --boot-directory=/boot "${TARGET_DISK}" >/dev/null 2>&1; then
         DISK_GRUB_OK="true"
       fi
     fi
     if [ "${DISK_GRUB_OK}" != "true" ] && command -v grub-install >/dev/null 2>&1; then
-      if grub-install --target=i386-pc --boot-directory="${MNT_DIR}/boot" "${TARGET_DISK}" >/dev/null 2>&1; then
+      if grub-install --target=i386-pc --force --boot-directory="${MNT_DIR}/boot" "${TARGET_DISK}" >/dev/null 2>&1; then
         DISK_GRUB_OK="true"
       fi
     fi
   fi
 
   if [ "${DISK_GRUB_OK}" = "true" ] && [ -s "${MNT_DIR}/boot/grub/grub.cfg" ] && \
-     grep -q 'vmlinuz-lts' "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null && \
-     grep -q 'initramfs-lts' "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null && \
+     grep -qE 'vmlinuz' "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null && \
+     grep -qE 'initramfs|initrd' "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null && \
      grep -q "root=UUID=${UUID_ROOT}" "${MNT_DIR}/boot/grub/grub.cfg" 2>/dev/null; then
-    for ext_res in "${MNT_DIR}/boot/ldlinux.sys" "${MNT_DIR}/boot/ldlinux.c32" "${MNT_DIR}/boot/extlinux.conf" "${MNT_DIR}/etc/update-extlinux.conf"; do
+    for ext_res in "${MNT_DIR}/boot/ldlinux.sys" "${MNT_DIR}/boot/ldlinux.c32" "${MNT_DIR}/boot/extlinux.conf" "${MNT_DIR}/boot/syslinux.cfg" "${MNT_DIR}/boot/syslinux/syslinux.cfg" "${MNT_DIR}/etc/update-extlinux.conf"; do
       if [ -e "${ext_res}" ]; then
         chattr -i "${ext_res}" 2>/dev/null || true
         rm -f "${ext_res}"
