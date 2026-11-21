@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light only">
+<title>XIQI OS — Administração Exclusiva</title>
+<style>
+:root{color-scheme:light only;}
+html,body{background:#ffffff;color:#0f172a;margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+.box{max-width:440px;margin:28px auto;background:#ffffff;border:1px solid #d4d4d8;border-radius:10px;padding:22px;box-shadow:0 4px 16px rgba(15,23,42,.06)}
+h1{font-size:16px;margin:0 0 12px;color:#0f172a}
+.sub{font-size:12px;color:#52525b;margin:0 0 14px}
+.nav{display:-webkit-flex;display:flex;margin-bottom:14px;border-bottom:1px solid #e4e4e7;padding-bottom:8px}
+.nav button{background:#e4e4e7;color:#18181b;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-right:6px}
+.nav button.on{background:#18181b;color:#fff}
+label{display:block;font-size:12px;font-weight:600;margin-top:8px;color:#0f172a}
+input{width:100%;box-sizing:border-box;padding:8px;margin:4px 0 8px;border:1px solid #a1a1aa;border-radius:4px;background:#ffffff;color:#0f172a;font-size:13px}
+.pw-wrap{position:relative;display:flex;align-items:center;margin:4px 0 8px}
+.pw-wrap input{margin:0;padding-right:38px}
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:0;padding:4px 6px;cursor:pointer;color:#475569;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
+.pw-eye:hover{background:#f1f5f9;color:#0f172a}
+.btn{width:100%;padding:9px;background:#18181b;color:#fff;border:0;border-radius:4px;cursor:pointer;font-weight:600;margin-top:6px}
+.row{display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;padding:8px 0;border-bottom:1px solid #e4e4e7;font-size:13px}
+.del{background:#dc2626;color:#fff;border:0;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px}
+.hide{display:none}
+footer{text-align:center;margin-top:20px;font-size:12px;color:#52525b;font-weight:600}
+</style>
+</head>
+<body>
+<div class="box" id="authBox">
+  <div style="display:-webkit-flex;display:flex;-webkit-justify-content:space-between;justify-content:space-between;-webkit-align-items:center;align-items:center;margin-bottom:4px">
+    <h1 style="margin:0">XIQI OS — Administração</h1>
+    <a href="/" style="font-size:12px;color:#2563eb;text-decoration:none;font-weight:600">← Tela de Acesso</a>
+  </div>
+  <p class="sub">Área restrita exclusiva para administradores autorizados (Corporação Engecema).</p>
+  <div class="nav">
+    <button type="button" id="t1" class="on">Login</button>
+    <button type="button" id="t2">Cadastrar Admin</button>
+    <button type="button" id="t3">Esqueci a Senha</button>
+  </div>
+  <div id="v1">
+    <label for="lEmail">E-mail</label><input id="lEmail" type="email" autocomplete="off">
+    <label for="lPass">Senha</label>
+    <div class="pw-wrap">
+      <input id="lPass" type="password" autocomplete="off">
+      <button type="button" class="pw-eye" data-eye-target="lPass" aria-label="Mostrar ou ocultar senha" aria-pressed="false" title="Mostrar ou ocultar senha"></button>
+    </div>
+    <button type="button" class="btn" id="btnLogin">Entrar</button>
+    <div id="m1" style="color:#dc2626;font-size:12px;margin-top:6px"></div>
+  </div>
+  <div id="v2" class="hide">
+    <label for="rName">Nome Completo</label><input id="rName" type="text" autocomplete="off">
+    <label for="rEmail">E-mail</label><input id="rEmail" type="email" autocomplete="off">
+    <label for="rPass">Senha</label>
+    <div class="pw-wrap">
+      <input id="rPass" type="password" autocomplete="off">
+      <button type="button" class="pw-eye" data-eye-target="rPass" aria-label="Mostrar ou ocultar senha" aria-pressed="false" title="Mostrar ou ocultar senha"></button>
+    </div>
+    <label for="rKey">Chave Mestra</label>
+    <div class="pw-wrap">
+      <input id="rKey" type="password" autocomplete="off">
+      <button type="button" class="pw-eye" data-eye-target="rKey" aria-label="Mostrar ou ocultar chave mestra" aria-pressed="false" title="Mostrar ou ocultar chave mestra"></button>
+    </div>
+    <button type="button" class="btn" id="btnReg">Cadastrar Administrador</button>
+    <div id="m2" style="font-size:12px;margin-top:6px"></div>
+  </div>
+  <div id="v3" class="hide">
+    <label for="fEmail">E-mail</label><input id="fEmail" type="email" autocomplete="off">
+    <label for="fKey">Chave Mestra</label>
+    <div class="pw-wrap">
+      <input id="fKey" type="password" autocomplete="off">
+      <button type="button" class="pw-eye" data-eye-target="fKey" aria-label="Mostrar ou ocultar chave mestra" aria-pressed="false" title="Mostrar ou ocultar chave mestra"></button>
+    </div>
+    <label for="fPass">Nova Senha</label>
+    <div class="pw-wrap">
+      <input id="fPass" type="password" autocomplete="off">
+      <button type="button" class="pw-eye" data-eye-target="fPass" aria-label="Mostrar ou ocultar nova senha" aria-pressed="false" title="Mostrar ou ocultar nova senha"></button>
+    </div>
+    <button type="button" class="btn" id="btnReset">Redefinir Senha</button>
+    <div id="m3" style="font-size:12px;margin-top:6px"></div>
+  </div>
+</div>
+<div class="box hide" id="panelBox">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <h1 style="margin:0">Usuários Cadastrados</h1>
+    <button type="button" id="btnOut" style="background:#71717a;color:#fff;border:0;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Sair</button>
+  </div>
+  <div id="list"></div>
+</div>
+<footer>Corporação Engecema</footer>
+<script>
+let tk = "";
+const $ = id => document.getElementById(id);
+
+const EYE_OPEN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_CLOSED_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+document.querySelectorAll(".pw-eye").forEach(btn => {
+  btn.innerHTML = EYE_OPEN_SVG;
+  btn.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const targetId = btn.getAttribute("data-eye-target");
+    const input = targetId ? $(targetId) : null;
+    if (!input) return;
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    btn.setAttribute("aria-pressed", show ? "true" : "false");
+    btn.innerHTML = show ? EYE_CLOSED_SVG : EYE_OPEN_SVG;
+    input.focus();
+  });
+});
+
+function tab(n) {
+  Array.of(1, 2, 3).forEach(i => {
+    $("t" + i).className = i === n ? "on" : "";
+    $("v" + i).className = i === n ? "" : "hide";
+  });
+  $("m1").textContent = "";
+  $("m2").textContent = "";
+  $("m3").textContent = "";
+}
+$("t1").onclick = () => tab(1);
+$("t2").onclick = () => tab(2);
+$("t3").onclick = () => tab(3);
+async function load() {
+  try {
+    const r = await fetch("/api/admin/users", { headers: { "x-admin-key": tk } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      tk = "";
+      $("panelBox").className = "box hide";
+      $("authBox").className = "box";
+      $("m1").textContent = d.error || "Sessão administrativa expirada.";
+      return;
+    }
+    const u = d.users || [];
+    $("list").innerHTML = u.length ? "" : "<p style='color:#71717a;font-size:13px'>Nenhum usuário cadastrado.</p>";
+    u.forEach(x => {
+      const div = document.createElement("div");
+      div.className = "row";
+      const sp = document.createElement("span"); const b1 = document.createElement("b"); b1.textContent = x.name; const sm = document.createElement("small"); sm.textContent = x.identifier; sp.appendChild(b1); sp.appendChild(document.createElement("br")); sp.appendChild(sm); div.appendChild(sp);
+      const b = document.createElement("button");
+      b.className = "del"; b.textContent = "Excluir";
+      b.onclick = async () => {
+        try {
+          await fetch("/api/admin/users/" + encodeURIComponent(x.id), { method: "DELETE", headers: { "x-admin-key": tk } });
+          load();
+        } catch (e) {}
+      };
+      div.appendChild(b); $("list").appendChild(div);
+    });
+  } catch (e) {
+    $("list").innerHTML = "<p style='color:#dc2626;font-size:13px'>Erro de comunicação com o servidor.</p>";
+  }
+}
+$("btnLogin").onclick = async () => {
+  $("m1").textContent = "";
+  const email = $("lEmail").value.trim();
+  const password = $("lPass").value;
+  if (!email || !password) {
+    $("m1").textContent = "Informe o e-mail e a senha de administrador.";
+    return;
+  }
+  try {
+    const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { $("m1").textContent = d.error || "Erro ao entrar."; return; }
+    tk = d.token; $("authBox").className = "box hide"; $("panelBox").className = "box"; load();
+  } catch (e) {
+    $("m1").textContent = "Erro de comunicação com o servidor.";
+  }
+};
+$("btnReg").onclick = async () => {
+  const name = $("rName").value.trim();
+  const email = $("rEmail").value.trim();
+  const password = $("rPass").value;
+  const masterKey = $("rKey").value;
+  if (!name || !email.includes("@") || password.length < 4 || !masterKey) {
+    $("m2").style.color = "#dc2626";
+    $("m2").textContent = "Preencha Nome, E-mail válido, Senha (mín. 4 caracteres) e Chave Mestra.";
+    return;
+  }
+  try {
+    const r = await fetch("/api/admin/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email, password, masterKey }) });
+    const d = await r.json().catch(() => ({})); $("m2").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m2").textContent = r.ok ? "Administrador cadastrado com sucesso!" : (d.error || "Erro");
+  } catch (e) {
+    $("m2").style.color = "#dc2626"; $("m2").textContent = "Erro de comunicação com o servidor.";
+  }
+};
+$("btnReset").onclick = async () => {
+  const email = $("fEmail").value.trim();
+  const masterKey = $("fKey").value;
+  const newPassword = $("fPass").value;
+  if (!email.includes("@") || !masterKey || newPassword.length < 4) {
+    $("m3").style.color = "#dc2626";
+    $("m3").textContent = "Informe E-mail válido, Chave Mestra e Nova Senha (mín. 4 caracteres).";
+    return;
+  }
+  try {
+    const r = await fetch("/api/admin/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, masterKey, newPassword }) });
+    const d = await r.json().catch(() => ({})); $("m3").style.color = r.ok ? "#16a34a" : "#dc2626"; $("m3").textContent = r.ok ? "Senha alterada!" : (d.error || "Erro");
+  } catch (e) {
+    $("m3").style.color = "#dc2626"; $("m3").textContent = "Erro de comunicação com o servidor.";
+  }
+};
+$("btnOut").onclick = async () => {
+  if (tk) {
+    try { await fetch("/api/admin/logout", { method: "POST", headers: { "x-admin-key": tk } }); } catch (e) {}
+  }
+  tk = ""; $("lPass").value = ""; $("panelBox").className = "box hide"; $("authBox").className = "box";
+};
+</script>
+</body>
+</html>

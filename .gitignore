@@ -1,0 +1,10 @@
+node_modules/
+*.key
+*.crt
+*.srl
+*.pem
+*.log
+admins.json
+profiles.json
+notes.json
+.env
