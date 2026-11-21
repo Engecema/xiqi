@@ -22,12 +22,12 @@ gi.require_version('Gdk', '3.0')
 gi.require_version('WebKit2', '4.1')
 from gi.repository import Gtk, Gdk, GLib, WebKit2
 
-DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
+DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1").strip() or "http://127.0.0.1"
 DEFAULT_HOME = re.sub(r'/admin(?:[/?#].*)?$', '', DEFAULT_HOME, flags=re.IGNORECASE)
 BASE_URL = DEFAULT_HOME.rstrip("/")
 
 MODERN_DESKTOP_UA = (
-    "Mozilla/5.0 (XIQI OS; x86_64) AppleWebKit/537.36 "
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 

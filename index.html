@@ -4049,6 +4049,7 @@
       }
 
       function navigateActiveTab(url, customTitle) {
+        if(/^https?:\/\//i.test(url)&&!/^https?:\/\/(127\.0\.0\.1|localhost|xiqios)/i.test(url)){window.open(url,"_blank")||(window.location.href=url);return;}
         if (!isSafeHttpUrl(url)) return;
         var session = getActiveSession();
         var tab = session.tabs.find(function (t) { return t.id === session.activeTabId; });
@@ -4073,6 +4074,7 @@
       }
 
       function openUrlInNewTab(url, customTitle) {
+        if(/^https?:\/\//i.test(url)&&!/^https?:\/\/(127\.0\.0\.1|localhost|xiqios)/i.test(url)){window.open(url,"_blank")||(window.location.href=url);return;}
         if (!isSafeHttpUrl(url)) return;
         var session = getActiveSession();
         var tab = {
@@ -5427,7 +5429,106 @@
       }
       wn.style.display = "flex";
       if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px;background:#ffffff;color:#0f172a";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);var ntHdr={};try{var ut=sessionStorage.getItem("xiqi_user_token");if(ut)ntHdr["x-user-token"]=ut;}catch(e){}fetch("/api/notes",{headers:ntHdr}).then(function(r){return r.ok?r.json():{}}).then(function(d){ta.value=(d&&d.text)||""}).catch(function(){st.style.color="#dc2626";st.textContent="Erro ao carregar notas"});sb.onclick=async function(){st.style.color="#16a34a";st.textContent="Salvando...";try{var pHdr=Object.assign({"Content-Type":"application/json"},ntHdr);var r=await fetch("/api/notes",{method:"POST",headers:pHdr,body:JSON.stringify({text:ta.value})});if(!r.ok){st.style.color="#dc2626";}st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";}catch(err){st.style.color="#dc2626";st.textContent="Falha de comunicação";}};}
-      else if(a==="calc"){wt.textContent="Calculadora";var cl=document.createElement("label");cl.textContent="Expressão aritmética";cl.style.cssText="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:#475569";var ci=document.createElement("input");ci.style.cssText="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px;background:#ffffff;color:#0f172a";var rd=document.createElement("div");rd.style.cssText="font-weight:700;margin-top:8px";var eb=document.createElement("button");eb.type="button";eb.textContent="Calcular";eb.className="btn-sm btn-sm-accent";var runCalc=function(){var m=ci.value.replace(/\s+/g,"").match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);if(!m){rd.textContent="Formato inválido. Informe número, operador (+ - * /) e número.";return;}var numA=Number(m[1]),op=m[2],numB=Number(m[3]);var res=op==="+"?numA+numB:op==="-"?numA-numB:op==="*"?numA*numB:(numB!==0?numA/numB:"Divisão por zero");rd.textContent="= "+res;};eb.onclick=runCalc;ci.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();runCalc();}});wb.appendChild(cl);wb.appendChild(ci);wb.appendChild(eb);wb.appendChild(rd);}
+      else if(a==="calc"){
+        wt.textContent="Calculadora — Normal, Científica e Financeira";
+        var wrap=document.createElement("div");wrap.style.cssText="font-family:inherit;color:#0f172a";
+        var tabs=document.createElement("div");tabs.style.cssText="display:flex;gap:6px;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:8px";
+        var panes={};var tabBtns={};
+        [["normal","Normal"],["sci","Científica"],["fin","Financeira"]].forEach(function(it){
+          var b=document.createElement("button");b.type="button";b.textContent=it[1];b.className="btn-sm";
+          b.style.cssText="flex:1;font-weight:700;border-radius:6px;padding:6px 8px;cursor:pointer";
+          b.onclick=function(){
+            Object.keys(panes).forEach(function(k){
+              panes[k].style.display=(k===it[0])?"block":"none";
+              tabBtns[k].style.background=(k===it[0])?"#0f172a":"#f1f5f9";
+              tabBtns[k].style.color=(k===it[0])?"#ffffff":"#0f172a";
+            });
+          };
+          tabBtns[it[0]]=b;tabs.appendChild(b);
+          var d=document.createElement("div");d.style.display="none";panes[it[0]]=d;
+        });
+        wrap.appendChild(tabs);
+        var disp=document.createElement("input");disp.type="text";disp.placeholder="0";
+        disp.style.cssText="width:100%;box-sizing:border-box;padding:10px;font-size:18px;font-weight:700;text-align:right;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;background:#ffffff;color:#0f172a";
+        var out=document.createElement("div");out.style.cssText="min-height:22px;text-align:right;font-size:14px;font-weight:700;color:#16a34a;margin-bottom:8px";
+        var degMode=true;
+        function evalMath(raw){
+          var s=String(raw||"").trim();if(!s)return "";
+          s=s.replace(/,/g,".").replace(/[xX×]/g,"*").replace(/[÷]/g,"/").replace(/[−–]/g,"-").replace(/π/g,"Math.PI").replace(/e/g,"Math.E");
+          s=s.replace(/(\d+(?:\.\d+)?)%/g,"($1/100)");
+          s=s.replace(/\^/g,"**");
+          var toRad=degMode?"*(Math.PI/180)":"";
+          s=s.replace(/sin\(([^()]+)\)/g,"Math.sin(($1)"+toRad+")").replace(/cos\(([^()]+)\)/g,"Math.cos(($1)"+toRad+")").replace(/tan\(([^()]+)\)/g,"Math.tan(($1)"+toRad+")");
+          s=s.replace(/log\(/g,"Math.log10(").replace(/ln\(/g,"Math.log(").replace(/√\(/g,"Math.sqrt(").replace(/√(\d+(?:\.\d+)?)/g,"Math.sqrt($1)");
+          if(/[^0-9+\-*/().\sMathPIEsincotalgqrpow]/.test(s))throw new Error("Expressão inválida");
+          var v=Function('"use strict";return ('+s+')')();
+          if(typeof v!=="number"||!isFinite(v))throw new Error("Erro matemático");
+          return Number(v.toFixed(10));
+        }
+        function solveDisp(){
+          try{var r=evalMath(disp.value);if(r!==""){out.style.color="#16a34a";out.textContent="= "+r.toLocaleString("pt-BR",{maximumFractionDigits:8});disp.value=String(r);}}
+          catch(e){out.style.color="#dc2626";out.textContent="Expressão inválida";}
+        }
+        disp.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();solveDisp();}});
+        wrap.appendChild(disp);wrap.appendChild(out);
+        function makeGrid(keys,cols){
+          var g=document.createElement("div");g.style.cssText="display:grid;grid-template-columns:repeat("+cols+",1fr);gap:5px";
+          keys.forEach(function(k){
+            var btn=document.createElement("button");btn.type="button";btn.textContent=k;btn.className="btn-sm";
+            btn.style.cssText="padding:8px 4px;font-weight:700;font-size:13px;border-radius:6px;cursor:pointer";
+            if(k==="="){btn.style.background="#16a34a";btn.style.color="#ffffff";}
+            if(k==="C"){btn.style.color="#dc2626";}
+            btn.onclick=function(){
+              if(k==="C"){disp.value="";out.textContent="";}
+              else if(k==="⌫"){disp.value=disp.value.slice(0,-1);}
+              else if(k==="="){solveDisp();}
+              else if(k==="x²"){disp.value+="^2";}
+              else if(k==="xʸ"){disp.value+="^";}
+              else if(k==="1/x"){disp.value="1/("+disp.value+")";solveDisp();}
+              else if(["sin","cos","tan","log","ln","√"].indexOf(k)>=0){disp.value+=k+"(";}
+              else if(k==="n!"){try{var n=Math.floor(Number(evalMath(disp.value)));if(n<0||n>170)throw 1;var f=1;for(var i=2;i<=n;i++)f*=i;disp.value=String(f);out.style.color="#16a34a";out.textContent="= "+f;}catch(e){out.style.color="#dc2626";out.textContent="Inválido";}}
+              else{disp.value+=k;}
+              disp.focus();
+            };
+            g.appendChild(btn);
+          });
+          return g;
+        }
+        panes.normal.appendChild(makeGrid(["C","⌫","(",")","7","8","9","÷","4","5","6","×","1","2","3","−","0",".","%","+","="],4));
+        var degRow=document.createElement("div");degRow.style.cssText="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px";
+        var degBtn=document.createElement("button");degBtn.type="button";degBtn.className="btn-sm";degBtn.textContent="Modo: GRAUS (DEG)";
+        degBtn.onclick=function(){degMode=!degMode;degBtn.textContent=degMode?"Modo: GRAUS (DEG)":"Modo: RADIANOS (RAD)";};
+        degRow.appendChild(degBtn);panes.sci.appendChild(degRow);
+        panes.sci.appendChild(makeGrid(["sin","cos","tan","log","ln","√","x²","xʸ","n!","1/x","π","e","(",")","C","⌫","7","8","9","÷","4","5","6","×","1","2","3","−","0",".","=","+"],4));
+        var finBox=document.createElement("div");finBox.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px";
+        function finInp(lbl,ph){
+          var d=document.createElement("div");
+          var l=document.createElement("label");l.textContent=lbl;l.style.cssText="display:block;font-weight:600;color:#475569;margin-bottom:2px";
+          var i=document.createElement("input");i.type="text";i.placeholder=ph;i.style.cssText="width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;color:#0f172a";
+          d.appendChild(l);d.appendChild(i);finBox.appendChild(d);return i;
+        }
+        var fPv=finInp("Capital / PV (R$)","Ex: 10000");
+        var fRate=finInp("Taxa i (% ao mês)","Ex: 1.5");
+        var fN=finInp("Prazo n (meses)","Ex: 12");
+        var fType=finInp("Tipo (C=Composto / S=Simples)","C");fType.value="C";
+        panes.fin.appendChild(finBox);
+        var finBtns=document.createElement("div");finBtns.style.cssText="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap";
+        function addFinBtn(txt,fn){var b=document.createElement("button");b.type="button";b.textContent=txt;b.className="btn-sm btn-sm-accent";b.style.flex="1";b.onclick=fn;finBtns.appendChild(b);}
+        function numVal(el){return Number(String(el.value||"0").replace(/\./g,"").replace(",","."));}
+        addFinBtn("Montante (FV)",function(){
+          var pv=numVal(fPv),i=numVal(fRate)/100,n=numVal(fN),simp=String(fType.value).trim().toUpperCase()==="S";
+          var fv=simp?pv*(1+i*n):pv*Math.pow(1+i,n);
+          var j=fv-pv;out.style.color="#16a34a";out.textContent="FV: R$ "+fv.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+" | Juros: R$ "+j.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});disp.value=fv.toFixed(2);
+        });
+        addFinBtn("Parcela (PMT)",function(){
+          var pv=numVal(fPv),i=numVal(fRate)/100,n=numVal(fN);
+          var pmt=(i===0)?(n>0?pv/n:0):(pv*(i*Math.pow(1+i,n))/(Math.pow(1+i,n)-1));
+          out.style.color="#16a34a";out.textContent="Parcela PMT: R$ "+pmt.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});disp.value=pmt.toFixed(2);
+        });
+        panes.fin.appendChild(finBtns);
+        Object.keys(panes).forEach(function(k){wrap.appendChild(panes[k]);});
+        wb.appendChild(wrap);tabBtns.normal.click();
+      }
       else if(a==="sys"){
         wt.textContent="Sistema — XIQI OS";
         var sysInfo=document.createElement("div");
