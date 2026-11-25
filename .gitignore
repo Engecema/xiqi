@@ -8,3 +8,8 @@ admins.json
 profiles.json
 notes.json
 .env
+
+*.bak
+*.bak2
+__pycache__/
+config/origin.git/

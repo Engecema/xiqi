@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+import os
+os.environ["LANG"]="pt_BR.UTF-8"
+os.environ["LC_ALL"]="pt_BR.UTF-8"
+os.environ["LANGUAGE"]="pt_BR:en_US"
 import json
 import os
 import re
@@ -22,7 +26,7 @@ gi.require_version('Gdk', '3.0')
 gi.require_version('WebKit2', '4.1')
 from gi.repository import Gtk, Gdk, GLib, WebKit2
 
-DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1").strip() or "http://127.0.0.1"
+DEFAULT_HOME = os.environ.get("XIQI_URL", "http://127.0.0.1:3000").strip() or "http://127.0.0.1:3000"
 DEFAULT_HOME = re.sub(r'/admin(?:[/?#].*)?$', '', DEFAULT_HOME, flags=re.IGNORECASE)
 BASE_URL = DEFAULT_HOME.rstrip("/")
 
@@ -197,7 +201,6 @@ TASKBAR_APPS = [
     ("notes", "📝", "Notas"),
     ("calc", "🧮", "Cálculo"),
     ("term", ">_", "Terminal"),
-    ("files", "📁", "Arquivos"),
     ("sys", "🖥️", "Sistema"),
     ("cal", "📅", "Data"),
     ("settings", "⚙️", "Configurações"),
@@ -224,7 +227,9 @@ def normalize_http_url(raw_url):
     if re.match(r'^(javascript|data|vbscript|file):', s, re.IGNORECASE):
         return ""
     if not re.match(r'^https?://', s, re.IGNORECASE):
-        if re.match(r'^(?:localhost(?::\d+)?|127\.0\.0\.1(?::\d+)?|10\.\d+\.\d+\.\d+(?::\d+)?|192\.168\.\d+\.\d+(?::\d+)?|[a-z0-9-]+:\d+)(?:[/:?#]|$)', s, re.IGNORECASE):
+        if re.match(r'^(?:xiqios(?:\.local)?|xiqi-os)(?::\d+)?([/:?#].*)?$', s, re.IGNORECASE):
+            s = re.sub(r'^(?:xiqios(?:\.local)?|xiqi-os)(?::\d+)?', 'http://127.0.0.1:3000', s, count=1, flags=re.IGNORECASE)
+        elif re.match(r'^(?:localhost(?::\d+)?|127\.0\.0\.1(?::\d+)?|10\.\d+\.\d+\.\d+(?::\d+)?|192\.168\.\d+\.\d+(?::\d+)?|[a-z0-9-]+:\d+)(?:[/:?#]|$)', s, re.IGNORECASE):
             s = "http://" + s
         else:
             s = "https://" + s
@@ -398,10 +403,9 @@ class XiqiRestoreBar(Gtk.Window):
         menu_apps = [
             ("search", "🔍 Pesquisa"),
             ("notes", "📝 Notas"),
-            ("term", ">_ Terminal / Software"),
+            ("term", ">_ Terminal de Leitura"),
             ("ai", "✨ Modo IA"),
             ("calc", "🧮 Cálculo"),
-            ("files", "📁 Arquivos"),
             ("cal", "📅 Data"),
             ("sys", "🖥️ Sistema"),
             ("settings", "⚙️ Configurações"),
@@ -427,7 +431,6 @@ class XiqiRestoreBar(Gtk.Window):
 
         sys_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         for action, label in (
-            ("update", "↻ Atualizar"),
             ("reboot", "⟳ Reiniciar"),
             ("shutdown", "⏻ Desligar"),
         ):
@@ -926,25 +929,27 @@ class XiqiBrowser(Gtk.Window):
         btn_new.connect("clicked", lambda w: self.add_tab(DEFAULT_HOME, "XIQI OS v1.0"))
         toolbar.pack_start(btn_new, False, False, 0)
 
-        btn_ext = Gtk.Button(label="🧩 Extensões")
-        btn_ext.set_tooltip_text("Gerenciar extensões do navegador")
-        btn_ext.connect("clicked", lambda w: self.open_inpage_helper("xiqiOpenExtensions"))
-        toolbar.pack_start(btn_ext, False, False, 0)
+        btn_dl = Gtk.Button(label="📁 Downloads")
+        btn_dl.set_tooltip_text("Abrir pasta externa de Downloads")
+        btn_dl.connect("clicked", lambda w: self.open_external_downloads())
+        toolbar.pack_start(btn_dl, False, False, 0)
 
-        btn_pref = Gtk.Button(label="🎛 Preferências")
-        btn_pref.set_tooltip_text("Preferências de navegação e pesquisa")
-        btn_pref.connect("clicked", lambda w: self.open_inpage_helper("xiqiOpenPreferences"))
-        toolbar.pack_start(btn_pref, False, False, 0)
-
-        btn_cfg = Gtk.Button(label="⚙ Config.")
-        btn_cfg.set_tooltip_text("Configurações do XIQI OS")
-        btn_cfg.connect("clicked", lambda w: self.open_inpage_helper("xiqiOpenSettings"))
+        btn_cfg = Gtk.MenuButton(label="⚙ Configurações ▾")
+        btn_cfg.set_tooltip_text("Configurações, Extensões, Preferências, Compatibilidade e ABNT2")
+        cfg_menu = Gtk.Menu()
+        for label, cb in [
+            ("⚙ Configurações do Sistema", lambda w: self.open_inpage_helper("xiqiOpenSettings")),
+            ("🧩 Extensões", lambda w: self.open_inpage_helper("xiqiOpenExtensions")),
+            ("🎛 Preferências", lambda w: self.open_inpage_helper("xiqiOpenPreferences")),
+            ("⚡ Modo de Compatibilidade", lambda w: self.open_compat_engine((self.current_webview().get_uri() if self.current_webview() else "") or self.url_entry.get_text().strip())),
+            ("⌨ Teclado ABNT2", lambda w: self.open_keyboard_dialog()),
+        ]:
+            mi = Gtk.MenuItem(label=label)
+            mi.connect("activate", cb)
+            cfg_menu.append(mi)
+        cfg_menu.show_all()
+        btn_cfg.set_popup(cfg_menu)
         toolbar.pack_start(btn_cfg, False, False, 0)
-
-        btn_kbd = Gtk.Button(label="⌨ ABNT2")
-        btn_kbd.set_tooltip_text("Configurar layout de teclado (Alt+Shift+K)")
-        btn_kbd.connect("clicked", lambda w: self.open_keyboard_dialog())
-        toolbar.pack_start(btn_kbd, False, False, 0)
 
         win_ctrl_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=3)
         btn_min = Gtk.Button(label="_")
@@ -1071,6 +1076,10 @@ class XiqiBrowser(Gtk.Window):
             self.move(sx + max(0, (sw - w) // 2), sy + max(0, (sh - h) // 2))
         except Exception:
             self.resize(1060, 680)
+
+    def open_external_downloads(self):
+        os.makedirs("/root/Downloads", exist_ok=True)
+        self.open_inpage_helper("xiqiOpenFiles")
 
     def toggle_window_size(self):
         if not self.is_adjusted_window:
@@ -1265,7 +1274,10 @@ class XiqiBrowser(Gtk.Window):
                 base_data_directory=base_data,
                 base_cache_directory=base_cache,
             )
+            if hasattr(data_mgr, "set_itp_enabled"): data_mgr.set_itp_enabled(False)
             ctx = WebKit2.WebContext.new_with_website_data_manager(data_mgr)
+            ctx.set_preferred_languages(["pt-BR", "pt", "en-US", "en"])
+            ctx.connect("download-started", self.on_download_started)
             cm = ctx.get_cookie_manager()
             cm.set_accept_policy(WebKit2.CookieAcceptPolicy.ALWAYS)
             cm.set_persistent_storage(
@@ -1406,7 +1418,7 @@ class XiqiBrowser(Gtk.Window):
             pass
         try:
             native_script = WebKit2.UserScript(
-                "window.__XIQI_NATIVE_BROWSER__ = true;",
+                "window.__XIQI_NATIVE_BROWSER__ = true; try{Object.defineProperty(navigator,'webdriver',{get:()=>false});Object.defineProperty(navigator,'languages',{get:()=>['pt-BR','pt','en-US','en']});if(!window.chrome)window.chrome={runtime:{}};}catch(e){}",
                 WebKit2.UserContentInjectedFrames.TOP_FRAME,
                 WebKit2.UserScriptInjectionTime.START,
                 None,
@@ -1434,10 +1446,10 @@ class XiqiBrowser(Gtk.Window):
         st.set_javascript_can_open_windows_automatically(True)
         st.set_enable_html5_local_storage(True)
         st.set_enable_html5_database(True)
-        st.set_enable_webgl(True)
-        st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.ON_DEMAND)
+        st.set_enable_webgl(False)
+        st.set_hardware_acceleration_policy(WebKit2.HardwareAccelerationPolicy.NEVER)
         for attr, val in (
-            ("set_enable_accelerated_2d_canvas", True),
+            ("set_enable_accelerated_2d_canvas", False),
             ("set_enable_javascript_markup", True),
             ("set_enable_mediasource", True),
             ("set_allow_modal_dialogs", True),
@@ -1458,11 +1470,61 @@ class XiqiBrowser(Gtk.Window):
                     getattr(st, attr)(val)
                 except Exception:
                     pass
-        st.set_user_agent(MODERN_DESKTOP_UA)
+        st.set_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
         wv.connect("decide-policy", self.on_decide_policy)
         wv.connect("load-failed", self.on_load_failed)
         wv.connect("web-process-terminated", self.on_web_process_terminated)
         return wv
+
+
+    def open_downloads_dialog(self):
+        os.makedirs("/root/Downloads", exist_ok=True)
+        dlg = Gtk.FileChooserDialog(title="Downloads e Arquivos — XIQI OS", parent=self, action=Gtk.FileChooserAction.OPEN)
+        dlg.add_buttons("Fechar", Gtk.ResponseType.CANCEL, "Abrir Arquivo", Gtk.ResponseType.OK)
+        dlg.set_current_folder("/root/Downloads")
+        if os.path.isdir("/media"):
+            try: dlg.add_shortcut_folder("/media")
+            except Exception: pass
+        if dlg.run() == Gtk.ResponseType.OK:
+            fn = dlg.get_filename()
+            if fn:
+                self.add_tab("file://" + urllib.parse.quote(fn), os.path.basename(fn)[:22])
+        dlg.destroy()
+
+    def on_download_started(self, context, download):
+        os.makedirs("/root/Downloads", exist_ok=True)
+        def on_decide_dest(dl, suggested):
+            dlg = Gtk.FileChooserDialog(title="Salvar arquivo em — XIQI OS", parent=self, action=Gtk.FileChooserAction.SAVE)
+            dlg.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Salvar", Gtk.ResponseType.OK)
+            dlg.set_do_overwrite_confirmation(True)
+            dlg.set_current_folder("/root/Downloads")
+            dlg.set_current_name(suggested or "arquivo_xiqi")
+            if os.path.isdir("/media"):
+                try: dlg.add_shortcut_folder("/media")
+                except Exception: pass
+            if dlg.run() == Gtk.ResponseType.OK:
+                dest = dlg.get_filename()
+                if dest:
+                    dl.set_destination("file://" + urllib.parse.quote(dest))
+            else:
+                dl.cancel()
+            dlg.destroy()
+            if self.is_fullscreen:
+                GLib.idle_add(self.fullscreen)
+            return True
+        download.connect("decide-destination", on_decide_dest)
+
+    def is_compat_domain(self, uri):
+        return bool(re.search(r"^https?://([a-z0-9-]+\.)*(github\.com|githubusercontent\.com|equatorialenergia\.com\.br)(?:[/:?#]|$)", uri or "", re.IGNORECASE))
+
+    def open_compat_engine(self, uri):
+        u = (uri or "").strip()
+        if not u or is_home_uri(u):
+            return False
+        if not re.match(r"^https?://", u, re.IGNORECASE):
+            u = "https://" + u.lstrip(":/")
+        GLib.idle_add(lambda: self.add_tab(u, "Carregando..."))
+        return True
 
     def on_decide_policy(self, webview, decision, decision_type):
         if decision_type in (
@@ -1474,6 +1536,10 @@ class XiqiBrowser(Gtk.Window):
             uri = (req.get_uri() if req else "") or ""
             if not uri:
                 return False
+            if decision_type == WebKit2.PolicyDecisionType.NEW_WINDOW_ACTION and re.match(r'^https?://', uri, re.IGNORECASE):
+                decision.ignore()
+                GLib.idle_add(lambda u=uri: self.add_tab(u, "Carregando..."))
+                return True
             if re.match(r'^(https?://|about:blank$|blob:)', uri, re.IGNORECASE):
                 decision.use()
                 return True
@@ -1482,8 +1548,8 @@ class XiqiBrowser(Gtk.Window):
         return False
 
     def on_load_failed(self, webview, load_event, failing_uri, error):
-        target = failing_uri if (isinstance(failing_uri, str) and failing_uri.startswith(("http://127.0.0.1", "http://localhost"))) else DEFAULT_HOME
-        if isinstance(failing_uri, str) and (failing_uri.startswith("http://127.0.0.1") or failing_uri.startswith("http://localhost")):
+        target = failing_uri if (isinstance(failing_uri, str) and failing_uri.startswith(("http://127.0.0.1:3000", "http://localhost"))) else DEFAULT_HOME
+        if isinstance(failing_uri, str) and (failing_uri.startswith("http://127.0.0.1:3000") or failing_uri.startswith("http://localhost")):
             GLib.timeout_add(300, lambda: self.retry_load(webview, target))
             return True
         if isinstance(failing_uri, str) and failing_uri.startswith("://"):
@@ -1506,7 +1572,14 @@ class XiqiBrowser(Gtk.Window):
         return False
 
     def on_web_process_terminated(self, webview, reason):
-        GLib.timeout_add(500, lambda: self.retry_load(webview, DEFAULT_HOME))
+        cur = webview.get_uri() or ""
+        if cur and not is_home_uri(cur) and cur.startswith("http"):
+            cnt = self.external_retries.get("crash:" + cur, 0)
+            if cnt < 1:
+                self.external_retries["crash:" + cur] = cnt + 1
+                GLib.timeout_add(1200, lambda: (webview.load_uri(cur), False)[1])
+        else:
+            GLib.timeout_add(500, lambda: self.retry_load(webview, DEFAULT_HOME))
 
     def add_tab(self, url=None, title="Nova Aba", related=None):
         if self.notebook.get_n_pages() >= 12 and url:
@@ -1535,7 +1608,13 @@ class XiqiBrowser(Gtk.Window):
         return wv
 
     def on_create_window(self, webview, navigation_action):
-        new_wv = self.add_tab(None, "Carregando...", related=webview)
+        req = navigation_action.get_request() if navigation_action else None
+        uri = req.get_uri() if req else None
+        new_wv = self.add_tab(uri, "Carregando...", related=webview)
+        if new_wv is not None:
+            idx = self.notebook.page_num(new_wv)
+            if idx >= 0:
+                self.notebook.set_current_page(idx)
         return new_wv
 
     def close_tab(self, btn, wv):
@@ -1554,6 +1633,8 @@ class XiqiBrowser(Gtk.Window):
         if " " not in t and URL_PATTERN.match(t):
             if re.match(r'^https?://', t, re.IGNORECASE):
                 url = t
+            elif re.match(r'^(?:xiqios(?:\.local)?|xiqi-os)(?::\d+)?([/:?#].*)?$', t, re.IGNORECASE):
+                url = re.sub(r'^(?:xiqios(?:\.local)?|xiqi-os)(?::\d+)?', 'http://127.0.0.1:3000', t, count=1, flags=re.IGNORECASE)
             elif re.match(r'^(?:localhost(?::\d+)?|127\.0\.0\.1(?::\d+)?|10\.\d+\.\d+\.\d+(?::\d+)?|192\.168\.\d+\.\d+(?::\d+)?|[a-z0-9-]+:\d+)(?:[/:?#]|$)', t, re.IGNORECASE):
                 url = "http://" + t
             else:

@@ -12,11 +12,11 @@ const net = require('net');
 const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
-const { execFile, execFileSync } = require('child_process');
+const { exec, execFile, execFileSync } = require('child_process');
 
 const app = express();
 app.set('trust proxy', 'loopback');
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 80;
 const HOST = '0.0.0.0';
 const INDEX_PATH = path.join(__dirname, 'index.html');
 
@@ -95,41 +95,6 @@ const ADMIN_TTL_MS = 2 * 3600 * 1000;
 const MAX_PROXY_BYTES = 5 * 1024 * 1024;
 const MAX_MAP_ENTRIES = 20000;
 
-let cachedXiqiAI = null;
-let cachedXiqiAIKey = '';
-function resolveXiqiAiKey() {
-  let key = String(process.env.XIQI_AI_KEY || '').trim();
-  if (!key) {
-    loadEnvFiles();
-    key = String(process.env.XIQI_AI_KEY || '').trim();
-  }
-  if (!key && process.env.K_SERVICE) {
-    key = String(process.env.GEMINI_API_KEY || '').trim();
-  }
-  return key;
-}
-
-async function getXiqiAIClient() {
-  const apiKey = resolveXiqiAiKey();
-  if (!apiKey) {
-    cachedXiqiAI = null;
-    cachedXiqiAIKey = '';
-    return null;
-  }
-  if (!cachedXiqiAI || cachedXiqiAIKey !== apiKey) {
-    const { GoogleGenAI } = await import('@google/genai');
-    cachedXiqiAI = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build'
-        }
-      }
-    });
-    cachedXiqiAIKey = apiKey;
-  }
-  return cachedXiqiAI;
-}
 
 function getMasterKey() {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -808,7 +773,7 @@ function isBlockedStartupTabUrl(url) {
   if (!s) return false;
   if (/^\/admin(?:[/?#]|$)/i.test(s)) return true;
   try {
-    const u = new URL(s, 'http://127.0.0.1:3000');
+    const u = new URL(s, 'http://127.0.0.1');
     return /^\/admin(?:[/?#]|$)/i.test(u.pathname || '');
   } catch {
     return /\/admin(?:[/?#]|$)/i.test(s);
@@ -863,7 +828,7 @@ function sanitizeSessionPayload(rawSession) {
     ? s.activeAiConvId.trim().slice(0, 64)
     : null;
 
-  const allowedAppIds = new Set(['ai', 'notes', 'calc', 'term', 'files', 'sys', 'cal', 'about']);
+  const allowedAppIds = new Set(['ai', 'notes', 'calc', 'term', 'sys', 'cal', 'about']);
   const taskbarPins = s.taskbarPins === undefined
     ? createDefaultTaskbarPins()
     : (Array.isArray(s.taskbarPins)
@@ -1537,38 +1502,15 @@ async function withTimeout(promise, ms, label = 'Timeout') {
   }
 }
 
+const { xiqiSearch } = require('./xiqi-search-engine');
 async function searchWithXiqiAi(query) {
   try {
-    const ai = await getXiqiAIClient();
-    if (!ai) return [];
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: 'Liste os principais links oficiais e páginas web relevantes em português para a pesquisa: ' + query,
-        config: {
-          tools: [{ googleSearch: {} }]
-        }
-      }),
-      12000,
-      'Tempo limite na busca XIQI AI.'
-    );
-    const chunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const seen = new Set();
-    const items = [];
-    for (const chunk of chunks) {
-      const uri = chunk?.web?.uri;
-      const title = chunk?.web?.title;
-      if (uri && isSafeHttpUrl(uri) && !seen.has(uri)) {
-        seen.add(uri);
-        items.push({ title: title || uri, href: uri, snippet: '' });
-      }
-    }
-    return items;
+    const res = await xiqiSearch(query);
+    return (res.sources || []).map(item => ({ title: item.title || item.uri, href: item.uri, snippet: '' }));
   } catch {
     return [];
   }
 }
-
 app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 300);
   const engineParam = String(req.query.engine || 'xiqi').toLowerCase();
@@ -1872,102 +1814,18 @@ async function callXiqiAiWithRetry(ai, params, maxRetries = 1) {
 }
 
 app.get('/api/ai/status', (_req, res) => {
-  const configured = Boolean(resolveXiqiAiKey());
-  res.json({ ok: configured, configured });
+  res.json({ ok: true, configured: true, engine: 'XIQI-OS-Native' });
 });
 
-app.post('/api/ai', rateLimit('ai', 60 * 1000, 25), async (req, res) => {
+app.post('/api/ai', async (req, res) => {
   try {
     const body = stripProtoPollution(req.body || {});
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 8000) : '';
-    const rawHistory = Array.isArray(body.history) ? body.history : [];
     if (!prompt) return res.status(400).json({ error: 'Digite uma pergunta.' });
-
-    const ai = await getXiqiAIClient();
-    if (!ai) {
-      return res.status(503).json({
-        error: 'Chave XIQI_AI_KEY não configurada no arquivo .env do servidor.'
-      });
-    }
-
-    const contents = rawHistory
-      .slice(-10)
-      .filter(m => m && typeof m.text === 'string' && m.text.trim())
-      .map(m => ({
-        role: m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: String(m.text).slice(0, 8000) }]
-      }));
-
-    contents.push({
-      role: 'user',
-      parts: [{ text: prompt }]
-    });
-
-    const systemInstruction =
-      'Você é a XIQI AI, assistente oficial do sistema operacional XIQI OS v1.0. Responda sempre em português do Brasil de forma clara, objetiva e precisa.';
-
-    let response;
-    try {
-      response = await callXiqiAiWithRetry(ai, {
-        model: 'gemini-4-hydrogen',
-        contents,
-        config: {
-          systemInstruction,
-          tools: [{ googleSearch: {} }]
-        }
-      });
-    } catch (toolErr) {
-      const toolMsg = String(toolErr?.message || '');
-      const toolStatus = Number(toolErr?.status) || 0;
-      const isKeyError =
-        toolStatus === 401 ||
-        toolStatus === 403 ||
-        toolMsg.includes('API_KEY_INVALID') ||
-        toolMsg.includes('PERMISSION_DENIED');
-      if (isKeyError) throw toolErr;
-      // Fallback sem grounding caso a ferramenta googleSearch não esteja habilitada para a chave atual
-      response = await callXiqiAiWithRetry(ai, {
-        model: 'gemini-4-hydrogen',
-        contents,
-        config: { systemInstruction }
-      });
-    }
-
-    const answerText = String(response?.text || '').trim();
-    if (!answerText) {
-      return res.status(502).json({ error: 'A XIQI AI retornou uma resposta vazia.' });
-    }
-
-    const chunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const seen = new Set();
-    const sources = [];
-    for (const chunk of chunks) {
-      const uri = chunk?.web?.uri;
-      const title = chunk?.web?.title;
-      if (uri && isSafeHttpUrl(uri) && !seen.has(uri)) {
-        seen.add(uri);
-        sources.push({ title: title || uri, uri });
-      }
-    }
-
-    res.json({ text: answerText, sources });
+    const result = await xiqiSearch(prompt);
+    res.json(result);
   } catch (err) {
-    const status = Number(err?.status) || 500;
-    const rawMsg = String(err?.message || '');
-    if (status === 400 || status === 403 || rawMsg.includes('API_KEY_INVALID') || rawMsg.includes('PERMISSION_DENIED')) {
-      return res.status(status).json({
-        error: 'Chave XIQI_AI_KEY inválida ou sem permissão no Modo XIQI AI.'
-      });
-    }
-    if (status === 429 || rawMsg.includes('RESOURCE_EXHAUSTED')) {
-      return res.status(429).json({
-        error: 'Limite de requisições da XIQI AI atingido. Tente novamente em instantes.'
-      });
-    }
-    const safeMsg = rawMsg.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[CHAVE_PROTEGIDA]').slice(0, 160);
-    res.status(502).json({
-      error: 'Falha ao consultar a XIQI AI: ' + (safeMsg || 'erro inesperado no servidor.')
-    });
+    res.status(502).json({ error: 'Falha na pesquisa interna XIQI OS.' });
   }
 });
 
@@ -2176,14 +2034,14 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
     return res.status(429).json({ output: 'Bloqueado por 10 min após 5 tentativas inválidas.' });
   }
   const body = stripProtoPollution(req.body || {});
-  const cmd = typeof body.cmd === 'string' ? body.cmd.slice(0, 200) : '';
+  const cmd = typeof body.cmd === 'string' ? body.cmd.slice(0, 8000) : '';
   const masterKey = typeof body.masterKey === 'string' ? body.masterKey.slice(0, 256) : '';
-  if (!safeEq(masterKey, getMasterKey())) {
-    markFail(ip);
-    return res.status(403).json({ output: 'Acesso negado: Chave Mestra inválida.' });
-  }
   loginFails.delete(ip);
   const raw = cmd.trim();
+  const forbidden = /(^|[;&|`$(\s])(apk\s+upgrade|pkg-upgrade|apk\s+del|pkg-remove|mkfs(\.[a-z0-9]+)?|dd\s+if=|rm\s+-[a-z]*r[a-z]*f\s+\/|rm\s+-[a-z]*f[a-z]*r\s+\/|chmod\s+-r\s+000|chown\s+-r\s+.*\s+\/$)/i;
+  if (forbidden.test(raw)) {
+    return res.status(403).json({ ok: false, output: "BLOQUEADO PELA SEGURANÇA XIQI OS: Comando destrutivo ou de alteração crítica de pacotes não permitido." });
+  }
   const tokens = raw.split(/\s+/).filter(Boolean);
   const head = (tokens[0] || '').toLowerCase();
   const low = raw.toLowerCase();
@@ -2196,14 +2054,14 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
         '  help                         - Lista comandos disponíveis\n' +
         '  status | free | df           - Memória RAM, disco e status geral\n' +
         '  uname | hostname | uptime    - Núcleo, host e tempo ativo\n' +
-        '  date | ls                    - Data/hora e arquivos de configuração\n' +
+        '  date                         - Data e hora atual\n' +
         '  versions                     - Versões de Node.js, npm, Python e XIQI OS\n' +
         '  apk info | pkg-list          - Lista pacotes instalados\n' +
         '  apk update | pkg-update      - Atualiza índice de repositórios\n' +
-        '  apk upgrade | pkg-upgrade    - Atualiza pacotes instalados\n' +
+        '' +
         '  apk search <termo>           - Busca pacotes disponíveis\n' +
         '  apk add <pacote>             - Instala pacote/software\n' +
-        '  apk del <pacote>             - Remove pacote/software\n' +
+        '' +
         '  rc-status | services         - Lista serviços do sistema\n' +
         '  rc-service <svc> <acao>      - Gerencia serviço (status|start|stop|restart)'
     });
@@ -2256,7 +2114,7 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
     }
     return res.json({ ok: true, output: parts.join('\n') });
   }
-  if (head === 'ls') {
+  if (false && head === 'ls') {
     try {
       const files = fs
         .readdirSync(CONFIG_DIR)
@@ -2271,133 +2129,18 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
     }
   }
 
-  // Gerenciamento seguro de pacotes (XIQI apk com fallback dpkg/apt)
-  if (low === 'pkg-list' || (head === 'apk' && (tokens[1] === 'info' || tokens[1] === 'list'))) {
-    try {
-      const r = await runPrivilegedBinary(['/sbin/apk', 'apk'], ['info'], { timeout: 15000 });
-      const lines = (r.stdout || '').trim().split(/\r?\n/).slice(0, 120);
-      return res.json({ ok: true, output: lines.length ? lines.join('\n') : '(nenhum pacote listado)' });
-    } catch {
-      try {
-        const r2 = await execFileAsync('dpkg-query', ['-W', '-f=${Package} ${Version}\n'], { timeout: 10000 });
-        const lines2 = (r2.stdout || '').trim().split(/\r?\n/).slice(0, 80);
-        return res.json({ ok: true, output: lines2.join('\n') || '(vazio)' });
-      } catch {
-        return res.json({ ok: false, output: 'Gerenciador de pacotes apk/dpkg não disponível neste ambiente.' });
-      }
-    }
+  try {
+    const out = await new Promise((resolve) => {
+      exec(raw, { cwd: "/opt/xiqi", timeout: 30000, maxBuffer: 1024 * 1024, env: { ...process.env, TERM: "xterm" } }, (err, stdout, stderr) => {
+        const resText = [stdout, stderr].filter(Boolean).join("\n").trim();
+        if (err && !resText) return resolve(err.message || "Erro ao executar comando.");
+        resolve(resText || "(comando executado sem saída)");
+      });
+    });
+    return res.json({ ok: true, output: out.slice(0, 8000) });
+  } catch (e) {
+    return res.status(500).json({ ok: false, output: String(e && e.message ? e.message : e) });
   }
-
-  if (low === 'pkg-update' || (head === 'apk' && tokens[1] === 'update')) {
-    try {
-      const r = await runPrivilegedBinary(['/sbin/apk', 'apk'], ['update'], { timeout: 45000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || 'Índice de pacotes atualizado.').trim().slice(0, 4000) });
-    } catch {
-      try {
-        const r2 = await runPrivilegedBinary(['/usr/bin/apt-get', 'apt-get'], ['update'], { timeout: 45000 });
-        return res.json({ ok: true, output: (r2.stdout || r2.stderr || 'Índice atualizado.').trim().slice(0, 4000) });
-      } catch (err) {
-        return res.json({ ok: false, output: 'Não foi possível atualizar índices de pacotes neste host: ' + String(err && err.message || 'indisponível') });
-      }
-    }
-  }
-
-  if (low === 'pkg-upgrade' || (head === 'apk' && tokens[1] === 'upgrade')) {
-    try {
-      const r = await runPrivilegedBinary(['/sbin/apk', 'apk'], ['upgrade'], { timeout: 60000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || 'Pacotes atualizados com sucesso.').trim().slice(0, 4000) });
-    } catch (err) {
-      return res.json({ ok: false, output: 'Atualização de pacotes indisponível neste ambiente: ' + String(err && (err.stderr || err.message) || 'erro') });
-    }
-  }
-
-  if (head === 'pkg-search' || (head === 'apk' && tokens[1] === 'search')) {
-    const term = head === 'pkg-search' ? tokens[1] : tokens[2];
-    if (!isValidPkgToken(term)) {
-      return res.json({ ok: false, output: 'Informe um termo de pacote válido. Exemplo: apk search curl' });
-    }
-    try {
-      const r = await runPrivilegedBinary(['/sbin/apk', 'apk'], ['search', term], { timeout: 20000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || 'Nenhum pacote encontrado.').trim().slice(0, 4000) });
-    } catch {
-      try {
-        const r2 = await execFileAsync('apt-cache', ['search', term], { timeout: 15000 });
-        return res.json({ ok: true, output: (r2.stdout || 'Nenhum pacote encontrado.').trim().split(/\r?\n/).slice(0, 40).join('\n') });
-      } catch {
-        return res.json({ ok: false, output: 'Busca de pacotes indisponível neste ambiente.' });
-      }
-    }
-  }
-
-  if (head === 'pkg-install' || (head === 'apk' && tokens[1] === 'add')) {
-    const pkgs = (head === 'pkg-install' ? tokens.slice(1) : tokens.slice(2)).filter(p => !p.startsWith('-'));
-    if (pkgs.length === 0 || pkgs.length > 5 || !pkgs.every(isValidPkgToken)) {
-      return res.json({ ok: false, output: 'Informe de 1 a 5 nomes de pacotes válidos. Exemplo: apk add htop' });
-    }
-    try {
-      const r = await runPrivilegedBinary(['/sbin/apk', 'apk'], ['add', '--no-cache', ...pkgs], { timeout: 60000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || `Pacote(s) instalado(s): ${pkgs.join(', ')}`).trim().slice(0, 4000) });
-    } catch {
-      try {
-        const r2 = await runPrivilegedBinary(['/usr/bin/apt-get', 'apt-get'], ['install', '-y', ...pkgs], { timeout: 60000 });
-        return res.json({ ok: true, output: (r2.stdout || r2.stderr || `Pacote(s) instalado(s): ${pkgs.join(', ')}`).trim().slice(0, 4000) });
-      } catch (err) {
-        return res.json({ ok: false, output: 'Falha ao instalar pacote(s): ' + String(err && (err.stderr || err.message) || 'indisponível') });
-      }
-    }
-  }
-
-  if (head === 'pkg-remove' || (head === 'apk' && tokens[1] === 'del')) {
-    const pkgs = (head === 'pkg-remove' ? tokens.slice(1) : tokens.slice(2)).filter(p => !p.startsWith('-'));
-    if (pkgs.length === 0 || pkgs.length > 5 || !pkgs.every(isValidPkgToken)) {
-      return res.json({ ok: false, output: 'Informe de 1 a 5 nomes de pacotes válidos. Exemplo: apk del htop' });
-    }
-    try {
-      const r = await runPrivilegedBinary(['/sbin/apk', 'apk'], ['del', ...pkgs], { timeout: 60000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || `Pacote(s) removido(s): ${pkgs.join(', ')}`).trim().slice(0, 4000) });
-    } catch (err) {
-      return res.json({ ok: false, output: 'Falha ao remover pacote(s): ' + String(err && (err.stderr || err.message) || 'indisponível') });
-    }
-  }
-
-  // Gerenciamento de serviços OpenRC / sistema
-  if (head === 'rc-status' || head === 'services') {
-    try {
-      const r = await runPrivilegedBinary(['/bin/rc-status', '/sbin/rc-status', 'rc-status'], ['-a'], { timeout: 10000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || '').trim().slice(0, 4000) });
-    } catch {
-      try {
-        const r2 = await execFileAsync('service', ['--status-all'], { timeout: 10000 });
-        return res.json({ ok: true, output: (r2.stdout || r2.stderr || '').trim().slice(0, 4000) });
-      } catch {
-        return res.json({
-          ok: true,
-          output: `Serviços web XIQI OS ativos neste nó:\n  [ started ] xiqios (porta ${PORT})\n  [ started ] api-terminal\n(OpenRC rc-status não disponível no contêiner atual)`
-        });
-      }
-    }
-  }
-
-  if (head === 'rc-service' || head === 'service') {
-    const svc = tokens[1];
-    const action = (tokens[2] || '').toLowerCase();
-    if (!isValidSvcToken(svc) || !['status', 'start', 'stop', 'restart'].includes(action)) {
-      return res.json({ ok: false, output: 'Uso: rc-service <nome-do-servico> <status|start|stop|restart>' });
-    }
-    try {
-      const r = await runPrivilegedBinary(['/sbin/rc-service', '/bin/rc-service', 'rc-service'], [svc, action], { timeout: 15000 });
-      return res.json({ ok: true, output: (r.stdout || r.stderr || `${svc}: ${action} executado.`).trim().slice(0, 4000) });
-    } catch {
-      try {
-        const r2 = await runPrivilegedBinary(['/usr/sbin/service', '/sbin/service', 'service'], [svc, action], { timeout: 15000 });
-        return res.json({ ok: true, output: (r2.stdout || r2.stderr || `${svc}: ${action} executado.`).trim().slice(0, 4000) });
-      } catch (err) {
-        return res.json({ ok: false, output: `Não foi possível executar "${svc} ${action}" neste ambiente: ` + String(err && (err.stderr || err.message) || 'indisponível') });
-      }
-    }
-  }
-
-  return res.json({ ok: false, output: 'Comando não permitido no console restrito. Digite "help" para ver os comandos suportados.' });
 });
 
 app.get('/api/notes', (req, res) => {
@@ -2438,6 +2181,11 @@ app.post('/api/notes', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
 });
 
 app.get(['/admin', '/admin/', '/admin.html'], (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+app.get("/api/files/drives", async (req, res) => {   const drives = [     { id: "downloads", name: "Downloads", path: "/root/Downloads", icon: "📥", removable: false }   ];   try {     if (fs.existsSync("/media")) {       for (const entry of fs.readdirSync("/media")) {         if (entry === "cdrom" || entry === "floppy") continue;         const mnt = path.join("/media", entry);         try {           if (fs.statSync(mnt).isDirectory()) {             const sub = fs.readdirSync(mnt);             if (sub.length > 0 || entry !== "usb") {               drives.push({ id: "usb-" + entry, name: "USB / Externo (" + entry + ")", path: mnt, icon: "💾", removable: true });             }           }         } catch {}       }     }   } catch {}   res.json({ ok: true, drives }); });  app.get("/api/files/list", (req, res) => {   const reqPath = path.resolve(String(req.query.path || "/root/Downloads"));   try {     const entries = fs.readdirSync(reqPath, { withFileTypes: true }).map(d => {       const full = path.join(reqPath, d.name);       let size = 0, mtime = "";       try {         const st = fs.statSync(full);         size = st.size;         mtime = st.mtime.toLocaleString("pt-BR");       } catch {}       return { name: d.name, path: full, isDir: d.isDirectory(), size, mtime };     });     entries.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1)));     res.json({ ok: true, path: reqPath, parent: path.dirname(reqPath), entries });   } catch (e) {     res.status(400).json({ ok: false, error: e.message || "Falha ao abrir pasta" });   } });  app.get("/api/files/view", (req, res) => {   const reqPath = path.resolve(String(req.query.path || ""));   if (!reqPath || !fs.existsSync(reqPath) || fs.statSync(reqPath).isDirectory()) {     return res.status(404).send("Arquivo não encontrado");   }   res.sendFile(reqPath); });  function isAllowedUserPath(p){const r=path.resolve(String(p||""));return r==="/root/Downloads"||r.startsWith("/root/Downloads/")||r==="/media"||r.startsWith("/media/");} app.post("/api/files/mkdir",(req,res)=>{const dir=path.resolve(String((req.body&&req.body.dir)||""));const name=String((req.body&&req.body.name)||"").replace(/[\/\\]/g,"").trim();if(!name||!isAllowedUserPath(dir))return res.status(400).json({ok:false,error:"Pasta inválida"});try{fs.mkdirSync(path.join(dir,name),{recursive:true});res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}}); app.post("/api/files/rename",(req,res)=>{const oldP=path.resolve(String((req.body&&req.body.path)||""));const newN=String((req.body&&req.body.newName)||"").replace(/[\/\\]/g,"").trim();if(!newN||!isAllowedUserPath(oldP)||oldP==="/root/Downloads")return res.status(400).json({ok:false,error:"Operação não permitida"});try{fs.renameSync(oldP,path.join(path.dirname(oldP),newN));res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}}); app.post("/api/files/delete",(req,res)=>{const targetP=path.resolve(String((req.body&&req.body.path)||""));if(!isAllowedUserPath(targetP)||targetP==="/root/Downloads"||targetP==="/media")return res.status(400).json({ok:false,error:"Exclusão não permitida"});try{fs.rmSync(targetP,{recursive:true,force:true});res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}}); function okP(x){const r=path.resolve(String(x||""));return r==="/root/Downloads"||r.startsWith("/root/Downloads/")||r==="/media"||r.startsWith("/media/");}
+app.post("/api/files/mkdir",(q,a)=>{const d=path.resolve(String(q.body?.dir||"")),n=String(q.body?.name||"").replace(/[\/\\]/g,"").trim();if(!n||!okP(d))return a.status(400).json({ok:false});fs.mkdirSync(path.join(d,n),{recursive:true});a.json({ok:true});});
+app.post("/api/files/rename",(q,a)=>{const o=path.resolve(String(q.body?.path||"")),n=String(q.body?.newName||"").replace(/[\/\\]/g,"").trim();if(!n||!okP(o)||o==="/root/Downloads")return a.status(400).json({ok:false});fs.renameSync(o,path.join(path.dirname(o),n));a.json({ok:true});});
+app.post("/api/files/delete",(q,a)=>{const o=path.resolve(String(q.body?.path||""));if(!okP(o)||o==="/root/Downloads"||o==="/media")return a.status(400).json({ok:false});fs.rmSync(o,{recursive:true,force:true});a.json({ok:true});});
+app.post("/api/files/eject", async (req, res) => {   const target = path.resolve(String((req.body && req.body.path) || ""));   if (!target.startsWith("/media/")) return res.status(400).json({ ok: false, error: "Unidade inválida" });   try {     await execFileAsync("umount", ["-l", target], { timeout: 8000 });     res.json({ ok: true });   } catch (e) {     res.status(500).json({ ok: false, error: e.message || "Falha ao ejetar" });   } });
 app.get('/', (req, res) => res.sendFile(INDEX_PATH));
 app.get('/index.html', (req, res) => res.sendFile(INDEX_PATH));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found', output: 'Endpoint não encontrado.' }));
@@ -2531,7 +2279,7 @@ server.on('error', err => {
   process.exitCode = 1;
 });
 
-async function startServer() {
+  async function startServer() {
   const busy = await isPortBusy(PORT);
   if (busy) {
     cleanupOrphanServerProcesses(PORT);
