@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light only">
   <title>XIQI OS</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%276%27 fill=%27%23ffffff%27/%3E%3Crect x=%274%27 y=%274%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%2714%27 y=%274%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%274%27 y=%2714%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%2714%27 y=%2714%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%232563eb%27/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%276%27 fill=%27%23ffffff%27/%3E%3Crect x=%274%27 y=%274%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%2714%27 y=%274%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%274%27 y=%2714%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%2714%27 y=%2714%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%23059669%27/%3E%3C/svg%3E">
   <meta name="description" content="Sistema Operacional corporativo ultraleve XIQI OS">
   <meta property="og:title" content="XIQI OS">
   <meta property="og:description" content="Sistema Operacional corporativo ultraleve XIQI OS">
@@ -15,15 +15,15 @@
       --bg-page: #ffffff;
       --bg-soft: #f8fafc;
       --bg-hover: #f1f5f9;
-      --border-light: #e2e8f0;
-      --border-medium: #cbd5e1;
+      --border-light: #059669;
+      --border-medium: #059669;
       --text-main: #0f172a;
       --text-muted: #475569;
       --text-subtle: #64748b;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --accent-soft: #eff6ff;
-      --accent-border: #bfdbfe;
+      --accent: #059669;
+      --accent-hover: #047857;
+      --accent-soft: #ecfdf5;
+      --accent-border: #059669;
       --danger: #dc2626;
       --shadow-search: 0 2px 10px rgba(0, 0, 0, 0.08);
       --shadow-search-hover: 0 4px 16px rgba(0, 0, 0, 0.11);
@@ -444,7 +444,7 @@
     }
 
     body.xiqi-web-minimized {
-      background-color: #f1f5f9;
+      background-color: #059669;
     }
 
     body.xiqi-web-minimized .minimal-header,
@@ -949,7 +949,7 @@
       border: 2px solid #1e3a8a;
       border-radius: 9999px;
       padding: 6px 10px 6px 18px;
-      min-height: 52px;
+      min-height: 52px; z-index: 9998 !important;
       box-shadow: 0 4px 14px rgba(30, 58, 138, 0.14);
       transition: box-shadow 150ms ease, border-color 150ms ease;
     }
@@ -1452,7 +1452,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      min-height: 52px;
+      min-height: 52px; z-index: 9998 !important;
       padding: 6px 18px;
       background-color: rgba(255, 255, 255, 0.96);
       border-top: 1px solid var(--border-light);
@@ -1807,7 +1807,7 @@
     }
 
     .xiqi-term-entry-cmd {
-      color: #1d4ed8;
+      color: #047857;
       font-weight: 700;
       margin-top: 6px;
     }
@@ -1837,7 +1837,7 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12.5px;
       font-weight: 700;
-      color: #2563eb;
+      color: #059669;
       white-space: nowrap;
     }
 
@@ -1875,9 +1875,9 @@
     }
 
     .xiqi-term-hist-chip:hover {
-      background: #eff6ff;
-      border-color: #bfdbfe;
-      color: #1d4ed8;
+      background: #ecfdf5;
+      border-color: #059669;
+      color: #047857;
     }
 
     /* Formularios e Modais */
@@ -2436,10 +2436,10 @@
     <div class="taskbar-left">
       <button type="button" id="xiqiDotsBtn" class="taskbar-dots-btn" title="Aplicativos e Controles — XIQI OS" aria-label="Abrir menu dos 4 pontinhos" aria-expanded="false">
         <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="4" cy="4" r="2.4" fill="#2563eb"/>
+          <circle cx="4" cy="4" r="2.4" fill="#059669"/>
           <circle cx="12" cy="4" r="2.4" fill="#16a34a"/>
           <circle cx="4" cy="12" r="2.4" fill="#16a34a"/>
-          <circle cx="12" cy="12" r="2.4" fill="#2563eb"/>
+          <circle cx="12" cy="12" r="2.4" fill="#059669"/>
         </svg>
       </button>
     </div>
@@ -2543,7 +2543,7 @@
       </div>
 
       <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-        <input type="checkbox" id="prefAiAutoFocusCheck" style="width:16px;height:16px;accent-color:#2563eb;">
+        <input type="checkbox" id="prefAiAutoFocusCheck" style="width:16px;height:16px;accent-color:#059669;">
         <label for="prefAiAutoFocusCheck" style="font-size:13px;color:var(--text-main);cursor:pointer;">Manter Modo IA sincronizado na barra de endereços</label>
       </div>
 
@@ -3013,7 +3013,7 @@
           imgEl.classList.add('hidden');
           svgEl.classList.add('hidden');
           initEl.textContent = getInitials(user.name);
-          initEl.style.backgroundColor = user.color || '#2563eb';
+          initEl.style.backgroundColor = user.color || '#059669';
           initEl.classList.remove('hidden');
           remBtn.classList.add('hidden');
         } else {
@@ -3098,7 +3098,7 @@
 
           var av = document.createElement('span');
           av.className = 'avatar-circle avatar-circle-sm';
-          av.style.backgroundColor = u.color || '#2563eb';
+          av.style.backgroundColor = u.color || '#059669';
           av.textContent = getInitials(u.name);
 
           var label = document.createElement('span');
@@ -3656,7 +3656,7 @@
                 a.textContent = part;
                 a.target = '_blank';
                 a.rel = 'noopener noreferrer';
-                a.style.color = '#2563eb';
+                a.style.color = '#059669';
                 a.style.textDecoration = 'underline';
                 a.style.wordBreak = 'break-all';
                 bubble.appendChild(a);
@@ -3697,7 +3697,7 @@
                 }
                 var su = document.createElement("div");
                 su.style.fontSize = "11px";
-                su.style.color = "#2563eb";
+                su.style.color = "#059669";
                 su.style.marginTop = "2px";
                 su.textContent = src.uri;
                 sl.appendChild(su);
@@ -3864,7 +3864,7 @@
             avImg.classList.add('hidden');
             av.classList.remove('hidden');
             av.textContent = getInitials(user.name);
-            av.style.backgroundColor = user.color || '#2563eb';
+            av.style.backgroundColor = user.color || '#059669';
           }
           document.getElementById('headerUserName').textContent = user.name;
         } else {
@@ -4984,12 +4984,12 @@
 
   
 
-<div id="xiqiAppMenu" role="menu" aria-label="Menu rápido XIQI OS" style="position:fixed;bottom:62px;left:14px;width:312px;background:#ffffff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 12px 28px rgba(15,23,42,0.16);z-index:9997;display:none;flex-direction:column;gap:8px;">
+<div id="xiqiAppMenu" role="menu" aria-label="Menu rápido XIQI OS" style="position:fixed;bottom:62px;left:14px;width:312px;background:#ffffff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 12px 28px rgba(15,23,42,0.16);z-index:9999;display:none;flex-direction:column;gap:8px;">
   <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.04em;padding:0 4px;">XIQI OS — Acesso Rápido</div>
   <div style="display:flex;flex-wrap:wrap;text-align:center;">
     <button type="button" class="xapp" data-a="search" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🔍</div><div style="font-size:11px;margin-top:4px;color:#0f172a">Pesquisa</div></button>
     <button type="button" class="xapp" data-a="notes" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📝</div><div style="font-size:11px;margin-top:4px;color:#0f172a">Notas</div></button>
-    <button type="button" class="xapp" data-a="term" title="Terminal Operacional do Sistema" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px;font-weight:700;color:#2563eb">&gt;_</div><div style="font-size:11px;margin-top:4px;color:#0f172a;line-height:1.2;">Terminal<br>Operacional</div></button>
+    <button type="button" class="xapp" data-a="term" title="Terminal Operacional do Sistema" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px;font-weight:700;color:#059669">&gt;_</div><div style="font-size:11px;margin-top:4px;color:#0f172a;line-height:1.2;">Terminal<br>Operacional</div></button>
     <button type="button" class="xapp" data-a="ai" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">✨</div><div style="font-size:11px;margin-top:4px;color:#0f172a">Modo IA</div></button>
     <button type="button" class="xapp" data-a="calc" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">🧮</div><div style="font-size:11px;margin-top:4px;color:#0f172a">Cálculo</div></button>
     <button type="button" class="xapp" data-a="files" style="width:33.33%;border:0;background:transparent;padding:8px 4px;border-radius:10px;cursor:pointer"><div style="font-size:18px">📁</div><div style="font-size:11px;margin-top:4px;color:#0f172a">Arquivos</div></button>
@@ -5060,7 +5060,7 @@
     var rw=document.getElementById("taskbarRestoreWebBtn");
     if(rw)rw.classList.remove("hidden");
     var ov=document.getElementById("xiqiMinOverlay");
-    if(!ov){ov=document.createElement("div");ov.id="xiqiMinOverlay";ov.style.cssText="position:fixed;inset:0 0 48px 0;display:flex;align-items:center;justify-content:center;z-index:9990;background:#f1f5f9;";var rb=document.createElement("button");rb.type="button";rb.className="btn-sm btn-sm-accent";rb.style.cssText="padding:12px 22px;font-size:14px;";rb.textContent="🗖 Restaurar Tela XIQI OS";rb.onclick=exitWebMinimized;ov.appendChild(rb);document.body.appendChild(ov);}
+    if(!ov){ov=document.createElement("div");ov.id="xiqiMinOverlay";ov.style.cssText="position:fixed;inset:0 0 48px 0;display:flex;align-items:center;justify-content:center;z-index:9990;background:#059669;";var rb=document.createElement("button");rb.type="button";rb.className="btn-sm btn-sm";rb.style.cssText="padding:12px 22px;font-size:14px;";rb.textContent="🗖 Restaurar Tela XIQI OS";rb.onclick=exitWebMinimized;ov.appendChild(rb);document.body.appendChild(ov);}
     ov.style.display="flex";
   }
 
@@ -5085,7 +5085,7 @@
       okBtn.type="button";okBtn.className="btn-primary";okBtn.textContent="Atualizar Agora";
       okBtn.onclick=async function(){
         okBtn.disabled=true;cancelBtn.disabled=true;
-        statusEl.style.color="#2563eb";
+        statusEl.style.color="#059669";
         statusEl.textContent="Baixando atualizações e reiniciando o sistema...";
         try{
           var r=await fetch("/api/system/update",{method:"POST",headers:{"X-Xiqi-Action":"1"}});
@@ -5131,7 +5131,7 @@
     btnConfirm.textContent=isReboot?"Confirmar Reinício":"Confirmar Desligamento";
     btnConfirm.onclick=async function(){
       btnConfirm.disabled=true;btnCancel.disabled=true;
-      st.style.color="#2563eb";
+      st.style.color="#059669";
       st.textContent=isReboot?"Enviando comando de reinicialização...":"Enviando comando de desligamento...";
       try{
         var ep=isReboot?"/api/system/reboot":"/api/system/shutdown";
@@ -5327,6 +5327,7 @@
     }
   }
 
+  document.addEventListener('keydown',function(e){if(e.key==='F9'||(e.altKey&&e.code==='KeyT')){e.preventDefault();if(termModal&&termModal.style.display==='flex'){termModal.style.display='none';}else{openSoftwareTerminalModal();}}});
   function openSoftwareTerminalModal(){
     if(!termModal)return;
     exitWebMinimized();
@@ -5430,9 +5431,9 @@
         return;
       }
       wn.style.display = "flex";
-      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px;background:#ffffff;color:#0f172a";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);var ntHdr={};try{var ut=sessionStorage.getItem("xiqi_user_token");if(ut)ntHdr["x-user-token"]=ut;}catch(e){}fetch("/api/notes",{headers:ntHdr}).then(function(r){return r.ok?r.json():{}}).then(function(d){ta.value=(d&&d.text)||""}).catch(function(){st.style.color="#dc2626";st.textContent="Erro ao carregar notas"});sb.onclick=async function(){st.style.color="#16a34a";st.textContent="Salvando...";try{var pHdr=Object.assign({"Content-Type":"application/json"},ntHdr);var r=await fetch("/api/notes",{method:"POST",headers:pHdr,body:JSON.stringify({text:ta.value})});if(!r.ok){st.style.color="#dc2626";}st.textContent=r.ok?"Salvo no servidor!":"Erro ao salvar";}catch(err){st.style.color="#dc2626";st.textContent="Falha de comunicação";}};}
+      if(a==="notes"){wt.textContent="Bloco de Notas — XIQI OS";var ta=document.createElement("textarea");ta.style.cssText="width:100%;height:165px;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:8px;background:#ffffff;color:#0f172a";var row=document.createElement("div");row.style.cssText="display:flex;justify-content:space-between;align-items:center";var sb=document.createElement("button");sb.type="button";sb.textContent="Salvar Anotação";sb.className="btn-sm btn-sm-accent";var st=document.createElement("span");st.style.cssText="font-size:12px;color:#16a34a;font-weight:600";wb.appendChild(ta);row.appendChild(sb);row.appendChild(st);wb.appendChild(row);try{ta.value=localStorage.getItem("xiqi_local_notes")||"";}catch(e){}sb.onclick=function(){try{localStorage.setItem("xiqi_local_notes",ta.value);st.style.color="#16a34a";st.textContent="Salvo localmente!";}catch(err){st.style.color="#dc2626";st.textContent="Erro ao salvar";}};}
       else if(a==="files"){
-wt.textContent="Explorador de Arquivos — XIQI OS";var card=wn.querySelector(".xiqi-win-card")||wn.firstElementChild;if(card){card.style.boxSizing="border-box";card.style.maxWidth="92vw";card.style.width="92vw";card.style.maxHeight="90vh";}var wrapAll=document.createElement("div");wrapAll.style.cssText="display:flex;flex-direction:column;height:calc(88vh - 125px);min-height:300px;font-family:inherit;color:#0f172a;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;background:#fff;";var ribbon=document.createElement("div");ribbon.style.cssText="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;";function mkB(t,ac){var b=document.createElement("button");b.type="button";b.className=ac?"btn-sm btn-sm-accent":"btn-sm";b.textContent=t;b.style.cssText="font-weight:600;padding:5px 10px;cursor:pointer;";return b;}var bNew=mkB("📁+ Nova Pasta",1),bRen=mkB("✏ Renomear",0),bDel=mkB("🗑 Excluir",0),bDown=mkB("⬇ Baixar",0);var selInfo=document.createElement("span");selInfo.style.cssText="margin-left:auto;font-size:12px;color:#475569;font-weight:600;";selInfo.textContent="Nenhum item selecionado";ribbon.append(bNew,bRen,bDel,bDown,selInfo);var navBar=document.createElement("div");navBar.style.cssText="display:flex;gap:6px;align-items:center;padding:6px 10px;background:#fff;border-bottom:1px solid #e2e8f0;";var backBtn=mkB("◀",0),upBtn=mkB("⬆",0),refBtn=mkB("↻",0);var pathBox=document.createElement("div");pathBox.style.cssText="flex:1;font-size:12.5px;font-weight:600;color:#1e293b;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;padding:5px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";var searchInp=document.createElement("input");searchInp.type="text";searchInp.placeholder="🔍 Pesquisar...";searchInp.style.cssText="width:135px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:6px;padding:5px 9px;background:#fff;color:#0f172a;";navBar.append(backBtn,upBtn,refBtn,pathBox,searchInp);var bodySplit=document.createElement("div");bodySplit.style.cssText="display:flex;flex:1;overflow:hidden;";var side=document.createElement("div");side.style.cssText="width:185px;flex:0 0 185px;background:#f8fafc;border-right:1px solid #e2e8f0;padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;";var mainPane=document.createElement("div");mainPane.style.cssText="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff;";var tblHead=document.createElement("div");tblHead.style.cssText="display:grid;grid-template-columns:1fr 130px 75px 80px;padding:6px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:700;color:#64748b;";tblHead.innerHTML="<span>Nome</span><span>Modificado em</span><span>Tipo</span><span style=text-align:right>Tamanho</span>";var list=document.createElement("div");list.style.cssText="flex:1;overflow-y:auto;padding:4px;";var statusBar=document.createElement("div");statusBar.style.cssText="padding:4px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11.5px;color:#64748b;";mainPane.append(tblHead,list,statusBar);bodySplit.append(side,mainPane);wrapAll.append(ribbon,navBar,bodySplit);wb.appendChild(wrapAll);var curDir="/root/Downloads",parentDir="/root/Downloads",hist=[],allEntries=[],sel=null;function fmtSz(b){if(!b)return "";if(b<1024)return b+" B";if(b<1048576)return (b/1024).toFixed(1)+" KB";return (b/1048576).toFixed(1)+" MB";}function setSel(it,r){sel=it;Array.from(list.children).forEach(function(c){c.style.background="transparent";c.style.outline="none";});if(it&&r){r.style.background="#dbeafe";r.style.outline="1px solid #93c5fd";selInfo.textContent="Selecionado: "+it.name;}else{selInfo.textContent="Nenhum item selecionado";}}function render(){var q=(searchInp.value||"").trim().toLowerCase(),items=(q?allEntries.filter(function(x){return x.name.toLowerCase().indexOf(q)!==-1;}):allEntries.slice()).sort(function(a,b){if(a.isDir!==b.isDir)return a.isDir?-1:1;return a.name.localeCompare(b.name);});list.innerHTML="";setSel(null,null);statusBar.textContent=items.length+" item(ns)";if(!items.length){list.innerHTML="<div style=padding:20px;text-align:center;color:#64748b>Pasta vazia.</div>";return;}items.forEach(function(it){var r=document.createElement("div");r.style.cssText="display:grid;grid-template-columns:1fr 130px 75px 80px;align-items:center;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;user-select:none;";var ext=it.isDir?"Pasta":((it.name.split(".").pop()||"Arquivo").toUpperCase());r.innerHTML="<span style=overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:"+(it.isDir?"600":"400")+">"+(it.isDir?"📁 ":"📄 ")+it.name+"</span><span style=font-size:11.5px;color:#64748b>"+(it.mtime||"")+"</span><span style=font-size:11.5px;color:#64748b>"+ext+"</span><span style=font-size:11.5px;color:#64748b;text-align:right>"+(it.isDir?"":fmtSz(it.size))+"</span>";r.onclick=function(){setSel(it,r);};r.ondblclick=function(){if(it.isDir){loadDir(it.path,1);return;}var pv=document.createElement("div");pv.style.cssText="position:absolute;inset:0;background:#fff;z-index:20;display:flex;flex-direction:column;";var bar=document.createElement("div");bar.style.cssText="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;font-weight:600;font-size:13px;";var cl=document.createElement("button");cl.type="button";cl.className="btn-sm btn-sm-accent";cl.textContent="✖ Fechar Visualização";cl.onclick=function(){pv.remove();};bar.append(document.createTextNode(it.name),cl);var fr=document.createElement("iframe");fr.src="/api/files/view?path="+encodeURIComponent(it.path);fr.style.cssText="flex:1;border:0;width:100%;background:#fff;";pv.append(bar,fr);wrapAll.style.position="relative";wrapAll.appendChild(pv);};list.appendChild(r);});}async function loadDir(p,h){list.innerHTML="<div style=padding:16px;color:#64748b>Carregando...</div>";try{var r=await fetch("/api/files/list?path="+encodeURIComponent(p)),d=await r.json();if(!d.ok){list.innerHTML="<div style=padding:16px;color:#dc2626>"+(d.error||"Erro")+"</div>";return;}if(h&&curDir&&curDir!==d.path)hist.push(curDir);curDir=d.path;parentDir=d.parent;pathBox.textContent=curDir;searchInp.value="";allEntries=d.entries||[];render();}catch(e){list.innerHTML="<div style=padding:16px;color:#dc2626>Erro de rede</div>";}}async function loadDrives(){side.innerHTML="<div style=font-size:11px;font-weight:700;color:#64748b;padding:4px 6px>UNIDADES E PASTAS</div>";try{var r=await fetch("/api/files/drives"),d=await r.json();(d.drives||[]).forEach(function(dr){var w=document.createElement("div");w.style.cssText="display:flex;align-items:center;gap:4px;";var b=document.createElement("button");b.type="button";b.style.cssText="flex:1;text-align:left;border:1px solid #e2e8f0;background:#fff;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:600;color:#0f172a;";b.textContent=dr.icon+" "+dr.name;b.onclick=function(){loadDir(dr.path,1);};w.appendChild(b);if(dr.removable){var ej=document.createElement("button");ej.type="button";ej.className="btn-sm";ej.textContent="⏏";ej.onclick=async function(){await fetch("/api/files/eject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:dr.path})});loadDrives();loadDir("/root/Downloads",0);};w.appendChild(ej);}side.appendChild(w);});}catch(e){}}bNew.onclick=async function(){var n=prompt("Nome da nova pasta:");if(!n||!n.trim())return;await fetch("/api/files/mkdir",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({dir:curDir,name:n.trim()})});loadDir(curDir,0);};bRen.onclick=async function(){if(!sel)return alert("Selecione um item.");var n=prompt("Novo nome:",sel.name);if(!n||!n.trim()||n.trim()===sel.name)return;await fetch("/api/files/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:sel.path,newName:n.trim()})});loadDir(curDir,0);};bDel.onclick=async function(){if(!sel)return alert("Selecione um item.");if(!confirm("Excluir "+sel.name+"?"))return;await fetch("/api/files/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:sel.path})});loadDir(curDir,0);};bDown.onclick=function(){if(!sel||sel.isDir)return alert("Selecione um arquivo.");window.open("/api/files/view?path="+encodeURIComponent(sel.path),"_blank");};backBtn.onclick=function(){if(hist.length)loadDir(hist.pop(),0);};upBtn.onclick=function(){if(parentDir&&(parentDir==="/root/Downloads"||parentDir.startsWith("/root/Downloads/")||parentDir==="/media"||parentDir.startsWith("/media/")))loadDir(parentDir,1);};refBtn.onclick=function(){loadDrives();loadDir(curDir,0);};searchInp.oninput=render;loadDrives();loadDir("/root/Downloads",0);
+wt.textContent="Explorador de Arquivos — XIQI OS";var card=wn.querySelector(".xiqi-win-card")||wn.firstElementChild;if(card){card.style.boxSizing="border-box";card.style.maxWidth="92vw";card.style.width="92vw";card.style.maxHeight="90vh";card.style.border="2px solid #059669";}var wrapAll=document.createElement("div");wrapAll.style.cssText="display:flex;flex-direction:column;height:calc(88vh - 125px);min-height:300px;font-family:inherit;color:#0f172a;border:2px solid #059669;border-radius:10px;overflow:hidden;background:#fff;";var ribbon=document.createElement("div");ribbon.style.cssText="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #059669;";function mkB(t,ac){var b=document.createElement("button");b.type="button";b.className=ac?"btn-sm btn-sm-accent":"btn-sm";b.textContent=t;b.style.cssText="font-weight:600;padding:5px 10px;cursor:pointer;";return b;}var bNew=mkB("📁+ Nova Pasta",1),bCopy=mkB("📋 Copiar",0),bCut=mkB("✂ Recortar",0),bPaste=mkB("📌 Colar",0),bUnzip=mkB("📦 Extrair ZIP",0),bRen=mkB("✏ Renomear",0),bDel=mkB("🗑 Excluir",0),bDown=mkB("⬇ Baixar",0);var clip=null;var selInfo=document.createElement("span");selInfo.style.cssText="margin-left:auto;font-size:12px;color:#475569;font-weight:600;";selInfo.textContent="Nenhum item selecionado";ribbon.append(bNew,bCopy,bCut,bPaste,bUnzip,bRen,bDel,bDown,selInfo);var navBar=document.createElement("div");navBar.style.cssText="display:flex;gap:6px;align-items:center;padding:6px 10px;background:#fff;border-bottom:1px solid #059669;";var backBtn=mkB("◀",0),upBtn=mkB("⬆",0),refBtn=mkB("↻",0);var pathBox=document.createElement("div");pathBox.style.cssText="flex:1;font-size:12.5px;font-weight:600;color:#1e293b;background:#f8fafc;border:2px solid #059669;border-radius:6px;padding:5px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";var searchInp=document.createElement("input");searchInp.type="text";searchInp.placeholder="🔍 Pesquisar...";searchInp.style.cssText="width:135px;font-size:12.5px;border:2px solid #059669;border-radius:6px;padding:5px 9px;background:#fff;color:#0f172a;";navBar.append(backBtn,upBtn,refBtn,pathBox,searchInp);var bodySplit=document.createElement("div");bodySplit.style.cssText="display:flex;flex:1;overflow:hidden;";var side=document.createElement("div");side.style.cssText="width:185px;flex:0 0 185px;background:#f8fafc;border-right:1px solid #059669;padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;";var mainPane=document.createElement("div");mainPane.style.cssText="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff;";var tblHead=document.createElement("div");tblHead.style.cssText="display:grid;grid-template-columns:1fr 130px 75px 80px;padding:6px 12px;background:#f8fafc;border-bottom:1px solid #059669;font-size:11.5px;font-weight:700;color:#64748b;";tblHead.innerHTML="<span>Nome</span><span>Modificado em</span><span>Tipo</span><span style=text-align:right>Tamanho</span>";var list=document.createElement("div");list.style.cssText="flex:1;overflow-y:auto;padding:4px;";var statusBar=document.createElement("div");statusBar.style.cssText="padding:4px 12px;background:#f8fafc;border-top:1px solid #059669;font-size:11.5px;color:#64748b;";mainPane.append(tblHead,list,statusBar);bodySplit.append(side,mainPane);wrapAll.append(ribbon,navBar,bodySplit);wb.appendChild(wrapAll);var curDir="/root/Downloads",parentDir="/root/Downloads",hist=[],allEntries=[],sel=null;function fmtSz(b){if(!b)return "";if(b<1024)return b+" B";if(b<1048576)return (b/1024).toFixed(1)+" KB";return (b/1048576).toFixed(1)+" MB";}function setSel(it,r){sel=it;Array.from(list.children).forEach(function(c){c.style.background="transparent";c.style.outline="none";});if(it&&r){r.style.background="#ecfdf5";r.style.outline="1px solid #059669";selInfo.textContent="Selecionado: "+it.name;}else{selInfo.textContent="Nenhum item selecionado";}}function render(){var q=(searchInp.value||"").trim().toLowerCase(),items=(q?allEntries.filter(function(x){return x.name.toLowerCase().indexOf(q)!==-1;}):allEntries.slice()).sort(function(a,b){if(a.isDir!==b.isDir)return a.isDir?-1:1;return a.name.localeCompare(b.name);});list.innerHTML="";setSel(null,null);statusBar.textContent=items.length+" item(ns)";if(!items.length){list.innerHTML="<div style=padding:20px;text-align:center;color:#64748b>Pasta vazia.</div>";return;}items.forEach(function(it){var r=document.createElement("div");r.style.cssText="display:grid;grid-template-columns:1fr 130px 75px 80px;align-items:center;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;user-select:none;";var ext=it.isDir?"Pasta":((it.name.split(".").pop()||"Arquivo").toUpperCase());r.innerHTML="<span style=overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:"+(it.isDir?"600":"400")+">"+(it.isDir?"📁 ":"📄 ")+it.name+"</span><span style=font-size:11.5px;color:#64748b>"+(it.mtime||"")+"</span><span style=font-size:11.5px;color:#64748b>"+ext+"</span><span style=font-size:11.5px;color:#64748b;text-align:right>"+(it.isDir?"":fmtSz(it.size))+"</span>";r.onclick=function(){setSel(it,r);};r.oncontextmenu=function(ev){ev.preventDefault();ev.stopPropagation();setSel(it,r);showCtx(ev.clientX,ev.clientY,it);};r.ondblclick=function(){if(it.isDir){loadDir(it.path,1);return;}var pv=document.createElement("div");pv.style.cssText="position:absolute;inset:0;background:#fff;z-index:20;display:flex;flex-direction:column;";var bar=document.createElement("div");bar.style.cssText="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f1f5f9;border-bottom:1px solid #059669;font-weight:600;font-size:13px;";var cl=document.createElement("button");cl.type="button";cl.className="btn-sm btn-sm-accent";cl.textContent="✖ Fechar Visualização";cl.onclick=function(){pv.remove();};bar.append(document.createTextNode(it.name),cl);var fr=document.createElement("iframe");fr.src="/api/files/view?path="+encodeURIComponent(it.path);fr.style.cssText="flex:1;border:0;width:100%;background:#fff;";pv.append(bar,fr);wrapAll.style.position="relative";wrapAll.appendChild(pv);};list.appendChild(r);});}list.oncontextmenu=function(ev){ev.preventDefault();showCtx(ev.clientX,ev.clientY,null);};var ctx=document.createElement("div");ctx.style.cssText="position:fixed;z-index:9999;display:none;min-width:190px;background:#fff;border:2px solid #059669;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;";document.body.appendChild(ctx);document.addEventListener("click",function(){ctx.style.display="none";});async function loadDir(p,h){list.innerHTML="<div style=padding:16px;color:#64748b>Carregando...</div>";try{var r=await fetch("/api/files/list?path="+encodeURIComponent(p)),d=await r.json();if(!d.ok){list.innerHTML="<div style=padding:16px;color:#dc2626>"+(d.error||"Erro")+"</div>";return;}if(h&&curDir&&curDir!==d.path)hist.push(curDir);curDir=d.path;parentDir=d.parent;pathBox.textContent=curDir;searchInp.value="";allEntries=d.entries||[];render();}catch(e){list.innerHTML="<div style=padding:16px;color:#dc2626>Erro de rede</div>";}}async function loadDrives(){side.innerHTML="<div style=font-size:11px;font-weight:700;color:#64748b;padding:4px 6px>UNIDADES E PASTAS</div>";try{var r=await fetch("/api/files/drives"),d=await r.json();(d.drives||[]).forEach(function(dr){var w=document.createElement("div");w.style.cssText="display:flex;align-items:center;gap:4px;";var b=document.createElement("button");b.type="button";b.style.cssText="flex:1;text-align:left;border:1px solid #e2e8f0;background:#fff;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:600;color:#0f172a;";b.textContent=dr.icon+" "+dr.name;b.onclick=function(){loadDir(dr.path,1);};w.appendChild(b);if(dr.removable){var ej=document.createElement("button");ej.type="button";ej.className="btn-sm";ej.textContent="⏏";ej.onclick=async function(){await fetch("/api/files/eject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:dr.path})});function showCtx(x,y,it){ctx.innerHTML="";var ops=it?[["📂 Abrir",function(){it.isDir?loadDir(it.path,1):rDbl(it);}],["📋 Copiar",function(){clip={op:"copy",item:it};selInfo.textContent="Copiado: "+it.name;}],["✂ Recortar",function(){clip={op:"move",item:it};selInfo.textContent="Recortado: "+it.name;}]]:[];if(clip)ops.push(["📌 Colar aqui",doPaste]);if(it&&!it.isDir&&it.name.toLowerCase().endsWith(".zip"))ops.push(["📦 Extrair Aqui (.zip)",doUnzip]);ops.push(["📁+ Nova Pasta",function(){bNew.onclick();}]);if(it){ops.push(["✏ Renomear",function(){bRen.onclick();}]);ops.push(["🗑 Excluir",function(){bDel.onclick();}]);ops.push(["ℹ Propriedades",function(){alert(it.name+" | "+it.path);}]);}ops.forEach(function(o){var bt=document.createElement("button");bt.type="button";bt.textContent=o;bt.style.cssText="display:block;width:100%;text-align:left;padding:6px 10px;border:0;background:transparent;font-size:12.5px;font-weight:600;cursor:pointer;";bt.onclick=function(e){e.stopPropagation();ctx.style.display="none";o();};ctx.appendChild(bt);});ctx.style.left=Math.min(x,window.innerWidth-210)+"px";ctx.style.top=Math.min(y,window.innerHeight-260)+"px";ctx.style.display="block";}function rDbl(it){if(it.isDir){loadDir(it.path,1);return;}if(it.name.toLowerCase().endsWith(".zip")){doUnzip();return;}window.open("/api/files/view?path="+encodeURIComponent(it.path),"_blank");}async function doPaste(){if(!clip)return alert("Nada copiado.");var ep=clip.op==="move"?"/api/files/move":"/api/files/copy";await fetch(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({src:clip.item.path,destDir:curDir})});if(clip.op==="move")clip=null;loadDir(curDir,0);}async function doUnzip(){if(!sel||sel.isDir||!sel.name.toLowerCase().endsWith(".zip"))return alert("Selecione um .zip");var r=await fetch("/api/files/unzip",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:sel.path})});var j=await r.json();alert(j.ok?"Extraído com sucesso!":"Erro.");loadDir(curDir,0);}bCopy.onclick=function(){if(!sel)return alert("Selecione.");clip={op:"copy",item:sel};selInfo.textContent="Copiado: "+sel.name;};bCut.onclick=function(){if(!sel)return alert("Selecione.");clip={op:"move",item:sel};selInfo.textContent="Recortado: "+sel.name;};bPaste.onclick=doPaste;bUnzip.onclick=doUnzip;loadDrives();loadDir("/root/Downloads",0);};w.appendChild(ej);}side.appendChild(w);});}catch(e){}}bNew.onclick=async function(){var n=prompt("Nome da nova pasta:");if(!n||!n.trim())return;await fetch("/api/files/mkdir",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({dir:curDir,name:n.trim()})});loadDir(curDir,0);};bRen.onclick=async function(){if(!sel)return alert("Selecione um item.");var n=prompt("Novo nome:",sel.name);if(!n||!n.trim()||n.trim()===sel.name)return;await fetch("/api/files/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:sel.path,newName:n.trim()})});loadDir(curDir,0);};bDel.onclick=async function(){if(!sel)return alert("Selecione um item.");if(!confirm("Excluir "+sel.name+"?"))return;await fetch("/api/files/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:sel.path})});loadDir(curDir,0);};bDown.onclick=function(){if(!sel||sel.isDir)return alert("Selecione um arquivo.");window.open("/api/files/view?path="+encodeURIComponent(sel.path),"_blank");};backBtn.onclick=function(){if(hist.length)loadDir(hist.pop(),0);};upBtn.onclick=function(){if(parentDir&&(parentDir==="/root/Downloads"||parentDir.startsWith("/root/Downloads/")||parentDir==="/media"||parentDir.startsWith("/media/")))loadDir(parentDir,1);};refBtn.onclick=function(){loadDrives();loadDir(curDir,0);};searchInp.oninput=render;loadDrives();loadDir("/root/Downloads",0);
       }
       else if(a==="calc"){
         wt.textContent="Calculadora — Normal, Científica e Financeira";

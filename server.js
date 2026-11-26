@@ -919,7 +919,7 @@ app.get('/api/store', (req, res) => {
           id: activeUser.id,
           name: activeUser.name,
           identifier: activeUser.identifier,
-          color: activeUser.color || '#2563eb',
+          color: activeUser.color || '#059669',
           photo: activeUser.photo || '',
           createdAt: activeUser.createdAt || ''
         }
@@ -927,7 +927,7 @@ app.get('/api/store', (req, res) => {
     users: users.map(u => ({
       id: u.id,
       name: u.name,
-      color: u.color || '#2563eb',
+      color: u.color || '#059669',
       photo: u.photo || ''
     })),
     session: activeSess || guestSess,
@@ -1001,7 +1001,7 @@ app.post('/api/auth/register', rateLimit('auth_reg', 10 * 60 * 1000, 10), (req, 
     return res.status(409).json({ error: 'Já existe uma conta cadastrada com este e-mail/usuário.' });
   }
 
-  const palette = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#0d9488', '#dc2626'];
+  const palette = ['#059669', '#059669', '#7c3aed', '#d97706', '#0d9488', '#dc2626'];
   const salt = crypto.randomBytes(16).toString('hex');
   const pinHash = hashSecret(pin, salt);
   const recoveryCode = generateRecoveryCode();
@@ -1049,7 +1049,7 @@ app.post('/api/auth/register', rateLimit('auth_reg', 10 * 60 * 1000, 10), (req, 
     token,
     recoveryCode,
     activeUser: { id: newUser.id, name: newUser.name, identifier: newUser.identifier, color: newUser.color, photo: '', createdAt: newUser.createdAt },
-    users: cur.users.map(u => ({ id: u.id, name: u.name, color: u.color || '#2563eb', photo: u.photo || '' })),
+    users: cur.users.map(u => ({ id: u.id, name: u.name, color: u.color || '#059669', photo: u.photo || '' })),
     session: newUser.session,
     user: { id: newUser.id, name: newUser.name, identifier: newUser.identifier, color: newUser.color, photo: '', createdAt: newUser.createdAt, session: newUser.session }
   });
@@ -1123,17 +1123,17 @@ app.post('/api/auth/login', rateLimit('auth_login', 60 * 1000, 25), (req, res) =
       id: user.id,
       name: user.name,
       identifier: user.identifier,
-      color: user.color || '#2563eb',
+      color: user.color || '#059669',
       photo: user.photo || '',
       createdAt: user.createdAt || ''
     },
-    users: users.map(u => ({ id: u.id, name: u.name, color: u.color || '#2563eb', photo: u.photo || '' })),
+    users: users.map(u => ({ id: u.id, name: u.name, color: u.color || '#059669', photo: u.photo || '' })),
     session: userSession,
     user: {
       id: user.id,
       name: user.name,
       identifier: user.identifier,
-      color: user.color || '#2563eb',
+      color: user.color || '#059669',
       photo: user.photo || '',
       createdAt: user.createdAt || '',
       session: userSession
@@ -1211,7 +1211,7 @@ app.post('/api/auth/logout', (req, res) => {
   const users = Array.isArray(cur.users) ? cur.users : [];
   res.json({
     ok: true,
-    users: users.map(u => ({ id: u.id, name: u.name, color: u.color || '#2563eb', photo: u.photo || '' })),
+    users: users.map(u => ({ id: u.id, name: u.name, color: u.color || '#059669', photo: u.photo || '' })),
     session: cur.guestSession || createDefaultGuestSession()
   });
 });
@@ -1548,7 +1548,7 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
                 <a class="res-title" href="${escHtml(i.href)}" data-xiqi-open="1">${escHtml(i.title)}</a>
                 <div class="res-url-row">
                   <span class="res-url">${escHtml(i.href)}</span>
-                  <a class="res-ext" href="${escHtml(i.href)}" target="_blank" rel="noopener noreferrer">Abrir fora ↗</a>
+                  <a class="res-ext" href="${escHtml(i.href)}" data-xiqi-open="1">Abrir fora ↗</a>
                 </div>
                 ${i.snippet ? `<p class="res-snip">${escHtml(i.snippet)}</p>` : ''}
               </article>`
@@ -1556,7 +1556,7 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
           .join('')
       : `<div class="res-empty">
            <p>Não foi possível obter resultados diretos neste momento para <strong>${escHtml(q)}</strong>.</p>
-           <a class="res-ext-btn" href="${escHtml(eng.extUrl)}" target="_blank" rel="noopener noreferrer">Pesquisar diretamente no ${escHtml(eng.label)} ↗</a>
+           <a class="res-ext-btn" href="${escHtml(eng.extUrl)}" data-xiqi-open="1">Pesquisar diretamente no ${escHtml(eng.label)} ↗</a>
          </div>`;
 
     const htmlPage = `<!DOCTYPE html>
@@ -1564,18 +1564,19 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://w3.org viewBox=%270 0 24 24%27%3E%3Crect width=%2724%27 height=%2724%27 rx=%276%27 fill=%27%23ffffff%27/%3E%3Crect x=%274%27 y=%274%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%2714%27 y=%274%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%274%27 y=%2714%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%230f172a%27/%3E%3Crect x=%2714%27 y=%2714%27 width=%276%27 height=%276%27 rx=%271.5%27 fill=%27%23059669%27/%3E%3C/svg%3E">
   <title>Busca XIQI — ${escHtml(q)}</title>
   <style>
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:#f8fafc;color:#0f172a;margin:0;padding:20px 24px}
     .wrap{max-width:860px;margin:0 auto}
     .head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}
     .head h2{margin:0;font-size:18px;font-weight:600}
-    .badge{display:inline-block;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:9999px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
-    .res-ext-btn{display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600}
-    .res-ext-btn:hover{background:#1d4ed8}
+    .badge{display:inline-block;background:#ecfdf5;color:#047857;border:1px solid #059669;border-radius:9999px;padding:2px 10px;font-size:12px;font-weight:600;margin-left:8px}
+    .res-ext-btn{display:inline-block;background:#059669;color:#fff;text-decoration:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600}
+    .res-ext-btn:hover{background:#047857}
     .res-card{margin-bottom:12px;padding:14px 16px;background:#fff;border-radius:10px;border:1px solid #e2e8f0;transition:border-color 140ms ease,box-shadow 140ms ease}
     .res-card:hover{border-color:#cbd5e1;box-shadow:0 2px 8px rgba(15,23,42,.06)}
-    .res-title{font-size:16px;color:#1d4ed8;font-weight:600;text-decoration:none;display:inline-block}
+    .res-title{font-size:16px;color:#047857;font-weight:600;text-decoration:none;display:inline-block}
     .res-title:hover{text-decoration:underline}
     .res-url-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px}
     .res-url{font-size:12px;color:#15803d;word-break:break-all}
@@ -1590,8 +1591,8 @@ app.get('/api/search', rateLimit('search', 60 * 1000, 45), async (req, res) => {
     <div class="head">
       <h2>Resultados para: ${escHtml(q)} <span class="badge">${escHtml(eng.label)}</span></h2>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button type="button" id="xiqiSwitchAiBtn" class="res-ext-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;cursor:pointer">✨ Modo IA</button>
-        <a class="res-ext-btn" href="${escHtml(eng.extUrl)}" target="_blank" rel="noopener noreferrer">Abrir no ${escHtml(eng.label)} ↗</a>
+        <button type="button" id="xiqiSwitchAiBtn" class="res-ext-btn" style="background:#ecfdf5;color:#047857;border:1px solid #059669;cursor:pointer">✨ Modo IA</button>
+        <a class="res-ext-btn" href="${escHtml(eng.extUrl)}" data-xiqi-open="1">Abrir no ${escHtml(eng.label)} ↗</a>
       </div>
     </div>
     ${cards}
@@ -1788,7 +1789,7 @@ app.get('/api/proxy', rateLimit('proxy', 60 * 1000, 60), async (req, res) => {
 <body style="font-family:sans-serif;padding:32px;background:#f8fafc;color:#0f172a;text-align:center">
   <h2>Não foi possível carregar este endereço pelo Proxy XIQI</h2>
   <p style="color:#475569">${escHtml(err && (err.statusCode === 403 || err.statusCode === 413) ? err.message : rawUrl)}</p>
-  ${safeExternalHref !== '#' ? `<a href="${safeExternalHref}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:12px;padding:10px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Abrir em nova janela ↗</a>` : ''}
+  ${safeExternalHref !== '#' ? `<a href="${safeExternalHref}" data-xiqi-open="1" style="display:inline-block;margin-top:12px;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">Abrir em nova janela ↗</a>` : ''}
 </body></html>`);
   }
 });
@@ -2038,7 +2039,7 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
   const masterKey = typeof body.masterKey === 'string' ? body.masterKey.slice(0, 256) : '';
   loginFails.delete(ip);
   const raw = cmd.trim();
-  const forbidden = /(^|[;&|`$(\s])(apk\s+upgrade|pkg-upgrade|apk\s+del|pkg-remove|mkfs(\.[a-z0-9]+)?|dd\s+if=|rm\s+-[a-z]*r[a-z]*f\s+\/|rm\s+-[a-z]*f[a-z]*r\s+\/|chmod\s+-r\s+000|chown\s+-r\s+.*\s+\/$)/i;
+  const forbidden = /(^|[;&|`$(\s])(apk\s+upgrade|pkg-upgrade|apk\s+del|pkg-remove|mkfs(\.[a-z0-9]+)?|dd\s+if=|rm\s+-[a-z]*r[a-z]*f\s+\/|rm\s+-[a-z]*f[a-z]*r\s+\/|chmod\s+-r\s+000|chattr\s+-i|apk\s+add\s+.*(nginx|apache2|lighttpd|caddy|httpd)|(\.env|xiqi\.start|xiqi-launch|xiqios\.json|\.xinitrc)|chown\s+-r\s+.*\s+\/$)/i;
   if (forbidden.test(raw)) {
     return res.status(403).json({ ok: false, output: "BLOQUEADO PELA SEGURANÇA XIQI OS: Comando destrutivo ou de alteração crítica de pacotes não permitido." });
   }
@@ -2182,10 +2183,11 @@ app.post('/api/notes', rateLimit('store_write', 60 * 1000, 60), (req, res) => {
 
 app.get(['/admin', '/admin/', '/admin.html'], (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 app.get("/api/files/drives", async (req, res) => {   const drives = [     { id: "downloads", name: "Downloads", path: "/root/Downloads", icon: "📥", removable: false }   ];   try {     if (fs.existsSync("/media")) {       for (const entry of fs.readdirSync("/media")) {         if (entry === "cdrom" || entry === "floppy") continue;         const mnt = path.join("/media", entry);         try {           if (fs.statSync(mnt).isDirectory()) {             const sub = fs.readdirSync(mnt);             if (sub.length > 0 || entry !== "usb") {               drives.push({ id: "usb-" + entry, name: "USB / Externo (" + entry + ")", path: mnt, icon: "💾", removable: true });             }           }         } catch {}       }     }   } catch {}   res.json({ ok: true, drives }); });  app.get("/api/files/list", (req, res) => {   const reqPath = path.resolve(String(req.query.path || "/root/Downloads"));   try {     const entries = fs.readdirSync(reqPath, { withFileTypes: true }).map(d => {       const full = path.join(reqPath, d.name);       let size = 0, mtime = "";       try {         const st = fs.statSync(full);         size = st.size;         mtime = st.mtime.toLocaleString("pt-BR");       } catch {}       return { name: d.name, path: full, isDir: d.isDirectory(), size, mtime };     });     entries.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : (a.isDir ? -1 : 1)));     res.json({ ok: true, path: reqPath, parent: path.dirname(reqPath), entries });   } catch (e) {     res.status(400).json({ ok: false, error: e.message || "Falha ao abrir pasta" });   } });  app.get("/api/files/view", (req, res) => {   const reqPath = path.resolve(String(req.query.path || ""));   if (!reqPath || !fs.existsSync(reqPath) || fs.statSync(reqPath).isDirectory()) {     return res.status(404).send("Arquivo não encontrado");   }   res.sendFile(reqPath); });  function isAllowedUserPath(p){const r=path.resolve(String(p||""));return r==="/root/Downloads"||r.startsWith("/root/Downloads/")||r==="/media"||r.startsWith("/media/");} app.post("/api/files/mkdir",(req,res)=>{const dir=path.resolve(String((req.body&&req.body.dir)||""));const name=String((req.body&&req.body.name)||"").replace(/[\/\\]/g,"").trim();if(!name||!isAllowedUserPath(dir))return res.status(400).json({ok:false,error:"Pasta inválida"});try{fs.mkdirSync(path.join(dir,name),{recursive:true});res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}}); app.post("/api/files/rename",(req,res)=>{const oldP=path.resolve(String((req.body&&req.body.path)||""));const newN=String((req.body&&req.body.newName)||"").replace(/[\/\\]/g,"").trim();if(!newN||!isAllowedUserPath(oldP)||oldP==="/root/Downloads")return res.status(400).json({ok:false,error:"Operação não permitida"});try{fs.renameSync(oldP,path.join(path.dirname(oldP),newN));res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}}); app.post("/api/files/delete",(req,res)=>{const targetP=path.resolve(String((req.body&&req.body.path)||""));if(!isAllowedUserPath(targetP)||targetP==="/root/Downloads"||targetP==="/media")return res.status(400).json({ok:false,error:"Exclusão não permitida"});try{fs.rmSync(targetP,{recursive:true,force:true});res.json({ok:true});}catch(e){res.status(500).json({ok:false,error:e.message});}}); function okP(x){const r=path.resolve(String(x||""));return r==="/root/Downloads"||r.startsWith("/root/Downloads/")||r==="/media"||r.startsWith("/media/");}
-app.post("/api/files/mkdir",(q,a)=>{const d=path.resolve(String(q.body?.dir||"")),n=String(q.body?.name||"").replace(/[\/\\]/g,"").trim();if(!n||!okP(d))return a.status(400).json({ok:false});fs.mkdirSync(path.join(d,n),{recursive:true});a.json({ok:true});});
-app.post("/api/files/rename",(q,a)=>{const o=path.resolve(String(q.body?.path||"")),n=String(q.body?.newName||"").replace(/[\/\\]/g,"").trim();if(!n||!okP(o)||o==="/root/Downloads")return a.status(400).json({ok:false});fs.renameSync(o,path.join(path.dirname(o),n));a.json({ok:true});});
-app.post("/api/files/delete",(q,a)=>{const o=path.resolve(String(q.body?.path||""));if(!okP(o)||o==="/root/Downloads"||o==="/media")return a.status(400).json({ok:false});fs.rmSync(o,{recursive:true,force:true});a.json({ok:true});});
+app.post("/api/files/copy",(q,a)=>{const s=path.resolve(String(q.body?.src||"")),d=path.resolve(String(q.body?.destDir||""));if(!okP(s)||!okP(d)||!fs.existsSync(s))return a.status(400).json({ok:false});let dst=path.join(d,path.basename(s));if(dst===s)dst=path.join(d,"Copia_"+path.basename(s));fs.cpSync(s,dst,{recursive:true});a.json({ok:true});});
+app.post("/api/files/move",(q,a)=>{const s=path.resolve(String(q.body?.src||"")),d=path.resolve(String(q.body?.destDir||""));if(!okP(s)||!okP(d)||!fs.existsSync(s)||s==="/root/Downloads"||s==="/media")return a.status(400).json({ok:false});const dst=path.join(d,path.basename(s));if(dst!==s)fs.renameSync(s,dst);a.json({ok:true});});
+app.post("/api/files/unzip",(q,a)=>{const s=path.resolve(String(q.body?.path||"")),d=path.dirname(s);if(!okP(s)||!fs.existsSync(s)||!s.toLowerCase().endsWith(".zip"))return a.status(400).json({ok:false});require("child_process").execFileSync("python3",["-m","zipfile","-e",s,d]);a.json({ok:true});});
 app.post("/api/files/eject", async (req, res) => {   const target = path.resolve(String((req.body && req.body.path) || ""));   if (!target.startsWith("/media/")) return res.status(400).json({ ok: false, error: "Unidade inválida" });   try {     await execFileAsync("umount", ["-l", target], { timeout: 8000 });     res.json({ ok: true });   } catch (e) {     res.status(500).json({ ok: false, error: e.message || "Falha ao ejetar" });   } });
+app.get('/icon.svg', (req, res) => res.type('image/svg+xml').send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#ffffff"/><rect x="4" y="4" width="6" height="6" rx="1.5" fill="#0f172a"/><rect x="14" y="4" width="6" height="6" rx="1.5" fill="#0f172a"/><rect x="4" y="14" width="6" height="6" rx="1.5" fill="#0f172a"/><rect x="14" y="14" width="6" height="6" rx="1.5" fill="#059669"/></svg>'));
 app.get('/', (req, res) => res.sendFile(INDEX_PATH));
 app.get('/index.html', (req, res) => res.sendFile(INDEX_PATH));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not Found', output: 'Endpoint não encontrado.' }));
