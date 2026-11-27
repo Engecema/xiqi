@@ -5317,7 +5317,7 @@
       var r=await fetch("/api/terminal",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({cmd:cmdText,masterKey:mKey})
+        body:JSON.stringify({cmd:cmdText,masterKey:mKey,cwd:window._cwd||"/root"})
       });
       var d=await r.json().catch(function(){return {ok:false,output:"Erro de comunicação"};});
       if(d.cwd){window._cwd=d.cwd;var pEl=document.getElementById("xiqiTermPrompt");if(pEl&&!localStorage.getItem("xPrompt"))pEl.textContent=d.cwd+" $";}var isErr=!r.ok||d.ok===false;

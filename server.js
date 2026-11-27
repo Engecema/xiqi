@@ -2038,12 +2038,12 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
   const cmd = typeof body.cmd === 'string' ? body.cmd.slice(0, 8000) : '';
   const masterKey = typeof body.masterKey === 'string' ? body.masterKey.slice(0, 256) : '';
   loginFails.delete(ip);
-  const raw = cmd.trim();
+  const raw = cmd.trim(); const curCwd = (typeof body.cwd === "string" && body.cwd.startsWith("/")) ? body.cwd : "/root";
   const forbidden = /(^|[;&|`$(\s])(apk\s+upgrade|pkg-upgrade|apk\s+del|pkg-remove|mkfs(\.[a-z0-9]+)?|dd\s+if=|rm\s+-[a-z]*r[a-z]*f\s+\/|rm\s+-[a-z]*f[a-z]*r\s+\/|chmod\s+-r\s+000|chattr\s+-i|apk\s+add\s+.*(nginx|apache2|lighttpd|caddy|httpd)|(\.env|xiqi\.start|xiqi-launch|xiqios\.json|\.xinitrc)|chown\s+-r\s+.*\s+\/$)/i;
   if (forbidden.test(raw)) {
     return res.status(403).json({ ok: false, output: "BLOQUEADO PELA SEGURANÇA XIQI OS: Comando destrutivo ou de alteração crítica de pacotes não permitido." });
   }
-  if(/^cd(\s|$)/i.test(raw)){const t=raw.replace(/^cd\s*/i,"").trim()||"/root";const r=path.resolve(global.termCwd||"/opt/xiqi",t.replace(/^~/,"/root"));if(fs.existsSync(r)&&fs.statSync(r).isDirectory()){global.termCwd=r;return res.json({ok:true,cwd:r,output:r});}return res.json({ok:false,cwd:global.termCwd||"/opt/xiqi",output:"Pasta nao encontrada"});}const tokens = raw.split(/\s+/).filter(Boolean);
+  if(/^cd(\s|$)/i.test(raw)){const t=raw.replace(/^cd\s*/i,"").trim()||"/root";const r=path.resolve(curCwd,t.replace(/^~/,"/root"));if(fs.existsSync(r)&&fs.statSync(r).isDirectory()){return res.json({ok:true,cwd:r,output:r});}return res.json({ok:false,cwd:curCwd,output:"Pasta nao encontrada"});}const tokens = raw.split(/\s+/).filter(Boolean);
   const head = (tokens[0] || '').toLowerCase();
   const low = raw.toLowerCase();
 
@@ -2132,13 +2132,13 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
 
   try {
     const out = await new Promise((resolve) => {
-      exec(raw, { cwd: (global.termCwd=global.termCwd||"/opt/xiqi"), timeout: 30000, maxBuffer: 1024 * 1024, env: { ...process.env, TERM: "xterm" } }, (err, stdout, stderr) => {
+      exec(raw, { cwd: curCwd, timeout: 30000, maxBuffer: 1024 * 1024, env: { ...process.env, TERM: "xterm" } }, (err, stdout, stderr) => {
         const resText = [stdout, stderr].filter(Boolean).join("\n").trim();
         if (err && !resText) return resolve(err.message || "Erro ao executar comando.");
         resolve(resText || "(comando executado sem saída)");
       });
     });
-    return res.json({ ok: true, cwd: global.termCwd||"/opt/xiqi", output: out.slice(0, 8000) });
+    return res.json({ ok: true, cwd: curCwd, output: out.slice(0, 8000) });
   } catch (e) {
     return res.status(500).json({ ok: false, output: String(e && e.message ? e.message : e) });
   }
