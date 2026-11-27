@@ -2043,7 +2043,7 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
   if (forbidden.test(raw)) {
     return res.status(403).json({ ok: false, output: "BLOQUEADO PELA SEGURANÇA XIQI OS: Comando destrutivo ou de alteração crítica de pacotes não permitido." });
   }
-  const tokens = raw.split(/\s+/).filter(Boolean);
+  if(/^cd(\s|$)/i.test(raw)){const t=raw.replace(/^cd\s*/i,"").trim()||"/root";const r=path.resolve(global.termCwd||"/opt/xiqi",t.replace(/^~/,"/root"));if(fs.existsSync(r)&&fs.statSync(r).isDirectory()){global.termCwd=r;return res.json({ok:true,cwd:r,output:r});}return res.json({ok:false,cwd:global.termCwd||"/opt/xiqi",output:"Pasta nao encontrada"});}const tokens = raw.split(/\s+/).filter(Boolean);
   const head = (tokens[0] || '').toLowerCase();
   const low = raw.toLowerCase();
 
@@ -2132,13 +2132,13 @@ app.post('/api/terminal', rateLimit('terminal', 60 * 1000, 30), async (req, res)
 
   try {
     const out = await new Promise((resolve) => {
-      exec(raw, { cwd: "/opt/xiqi", timeout: 30000, maxBuffer: 1024 * 1024, env: { ...process.env, TERM: "xterm" } }, (err, stdout, stderr) => {
+      exec(raw, { cwd: (global.termCwd=global.termCwd||"/opt/xiqi"), timeout: 30000, maxBuffer: 1024 * 1024, env: { ...process.env, TERM: "xterm" } }, (err, stdout, stderr) => {
         const resText = [stdout, stderr].filter(Boolean).join("\n").trim();
         if (err && !resText) return resolve(err.message || "Erro ao executar comando.");
         resolve(resText || "(comando executado sem saída)");
       });
     });
-    return res.json({ ok: true, output: out.slice(0, 8000) });
+    return res.json({ ok: true, cwd: global.termCwd||"/opt/xiqi", output: out.slice(0, 8000) });
   } catch (e) {
     return res.status(500).json({ ok: false, output: String(e && e.message ? e.message : e) });
   }

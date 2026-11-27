@@ -5029,7 +5029,7 @@
     </div>
     <div id="xiqiTermConsole" class="xiqi-term-console" aria-live="polite"></div>
     <form id="xiqiTermForm" class="xiqi-term-cmd-row" autocomplete="off">
-      <span class="xiqi-term-prompt">PS XIQI&gt;</span>
+      <span id="xiqiTermPrompt" class="xiqi-term-prompt">/root $</span>
       <input type="text" id="xiqiTermCmdInput" class="xiqi-term-cmd-input" placeholder="Digite um comando (ex: help, status, df, versions)">
       <button type="submit" id="xiqiTermRunBtn" class="btn-sm btn-sm-accent">Executar</button>
     </form>
@@ -5307,7 +5307,7 @@
     }
     termHistoryCursor=termSessionHistory.length;
     renderTermHistoryChips();
-    appendTermLine("xiqi@os:~$ "+cmdText,"xiqi-term-entry-cmd");
+    var pEl=document.getElementById("xiqiTermPrompt");appendTermLine((pEl?pEl.textContent:"/root $")+" "+cmdText,"xiqi-term-entry-cmd");if(/^prompt\s+/i.test(cmdText)){var np=cmdText.replace(/^prompt\s+/i,"").trim();if(np==="reset"){localStorage.removeItem("xPrompt");if(pEl)pEl.textContent=(window._cwd||"/opt/xiqi")+" $";}else{localStorage.setItem("xPrompt",np);if(pEl)pEl.textContent=np;}appendTermLine("Prompt atualizado.","xiqi-term-entry-out");return;}
     if(!mKey){
       appendTermLine("Informe a Chave Mestra do Sistema acima antes de executar comandos.","xiqi-term-entry-err");
       if(termKeyInput)termKeyInput.focus();
@@ -5320,7 +5320,7 @@
         body:JSON.stringify({cmd:cmdText,masterKey:mKey})
       });
       var d=await r.json().catch(function(){return {ok:false,output:"Erro de comunicação"};});
-      var isErr=!r.ok||d.ok===false;
+      if(d.cwd){window._cwd=d.cwd;var pEl=document.getElementById("xiqiTermPrompt");if(pEl&&!localStorage.getItem("xPrompt"))pEl.textContent=d.cwd+" $";}var isErr=!r.ok||d.ok===false;
       appendTermLine(d.output||"(ok)",isErr?"xiqi-term-entry-err":"xiqi-term-entry-out");
     }catch(err){
       appendTermLine("Erro de comunicação com o servidor.","xiqi-term-entry-err");
